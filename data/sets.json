@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "sets": [
+    {
+      "id": "set_b41951b9-1854-48eb-88bd-0be782215b8f",
+      "name": "test1",
+      "maps": [
+        {
+          "id": "map_97b440a0-f774-412a-902d-ae6f4abb2836",
+          "kind": "map",
+          "originalName": "israel_4326_z5-7.gpkg",
+          "storedName": "map_97b440a0-f774-412a-902d-ae6f4abb2836.gpkg",
+          "relativePath": "sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/map/map_97b440a0-f774-412a-902d-ae6f4abb2836.gpkg",
+          "absolutePath": "/app/data/sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/map/map_97b440a0-f774-412a-902d-ae6f4abb2836.gpkg",
+          "mimeType": "application/geopackage+sqlite3",
+          "size": 217088,
+          "createdAt": "2026-05-19T16:34:17.394Z"
+        }
+      ],
+      "dtmLayers": [
+        {
+          "id": "dtm_bd90789f-81d8-4771-bcb6-23c736337c93",
+          "kind": "dtm",
+          "originalName": "israel_4326_z5-7.gpkg",
+          "storedName": "dtm_bd90789f-81d8-4771-bcb6-23c736337c93.gpkg",
+          "relativePath": "sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/dtm/dtm_bd90789f-81d8-4771-bcb6-23c736337c93.gpkg",
+          "absolutePath": "/app/data/sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/dtm/dtm_bd90789f-81d8-4771-bcb6-23c736337c93.gpkg",
+          "mimeType": "application/geopackage+sqlite3",
+          "size": 217088,
+          "createdAt": "2026-05-19T16:34:17.413Z",
+          "priority": 0
+        }
+      ],
+      "vrtPath": "/app/data/sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/set_b41951b9-1854-48eb-88bd-0be782215b8f.vrt",
+      "createdAt": "2026-05-19T16:34:17.414Z",
+      "updatedAt": "2026-05-19T16:34:17.414Z"
+    }
+  ]
+}

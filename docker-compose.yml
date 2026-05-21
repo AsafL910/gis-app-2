@@ -1,0 +1,54 @@
+services:
+  map-manager:
+    build:
+      context: ./map-manager
+      dockerfile: Dockerfile
+    container_name: gis-map-manager
+    environment:
+      DATA_DIR: /app/data
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/app/data
+
+  terrain-calculator:
+    build:
+      context: ./terrain-calculator
+      dockerfile: Dockerfile
+    container_name: gis-terrain-calculator
+    environment:
+      DATA_DIR: /app/data
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+
+  map-manager-ui:
+    build:
+      context: ./map-manager-ui
+      dockerfile: Dockerfile
+    container_name: gis-map-manager-ui
+    environment:
+      PORT: 5173
+      VITE_PROXY_TARGET: http://map-manager:4000
+    depends_on:
+      - map-manager
+    ports:
+      - "5173:5173"
+
+  map-provider:
+    build:
+      context: ./map-provider
+      dockerfile: Dockerfile
+    container_name: gis-map-provider
+    environment:
+      PORT: 8003
+      DATA_DIR: /app/data
+    depends_on:
+      - map-manager
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./data:/app/data
