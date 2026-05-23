@@ -1,0 +1,47 @@
+nameOverride: ""
+fullnameOverride: hat-provider
+
+replicaCount: 1
+
+image:
+  repository: hat-provider
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8004
+  targetPort: 8004
+
+container:
+  port: 8004
+
+env:
+  DATA_DIR: /app/data
+  PORT: "8004"
+
+persistence:
+  enabled: true
+  mountPath: /app/data
+  existingClaim: ""
+  readOnly: false
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    enabled: false
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+podSecurityContext: {}
+securityContext: {}
+resources: {}
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  sharedPvc:
+    claimName: ""

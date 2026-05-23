@@ -1,0 +1,257 @@
+:root {
+  color: #f3f1e7;
+  background:
+    radial-gradient(circle at top left, rgba(49, 121, 84, 0.22), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(196, 138, 58, 0.18), transparent 26%),
+    linear-gradient(160deg, #0d1717 0%, #122124 45%, #1b2420 100%);
+  font-family: "Aptos", "Trebuchet MS", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+code {
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(340px, 390px) 1fr;
+}
+
+.sidebar {
+  padding: 24px;
+  background: rgba(8, 18, 20, 0.82);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  overflow: auto;
+}
+
+.hero {
+  padding: 2px 0 4px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #9ed4b8;
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.05;
+}
+
+h2 {
+  font-size: 1.2rem;
+}
+
+.lede {
+  margin: 14px 0 0;
+  line-height: 1.55;
+  color: rgba(243, 241, 231, 0.76);
+}
+
+.panel {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(243, 241, 231, 0.72);
+}
+
+.select,
+.range {
+  width: 100%;
+}
+
+.select {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(11, 22, 24, 0.95);
+  color: #f8fafc;
+}
+
+.range {
+  accent-color: #d6a75a;
+}
+
+.toggleRow {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.checkboxRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.checkboxRow input {
+  width: 16px;
+  height: 16px;
+}
+
+.meta {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(243, 241, 231, 0.72);
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.listItem {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.listItem.compact strong,
+.listItem.warning strong {
+  display: block;
+}
+
+.listItem small {
+  display: block;
+  margin-top: 4px;
+  color: rgba(243, 241, 231, 0.68);
+}
+
+.listItem.warning {
+  border-color: rgba(240, 189, 93, 0.34);
+  background: rgba(194, 132, 53, 0.12);
+}
+
+.empty {
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(243, 241, 231, 0.62);
+}
+
+.banner {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 14px;
+}
+
+.banner.error {
+  background: rgba(184, 67, 52, 0.18);
+  border: 1px solid rgba(184, 67, 52, 0.28);
+}
+
+.stage {
+  padding: 24px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+}
+
+.stageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.badges {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+}
+
+.mapWrap {
+  position: relative;
+  min-height: 620px;
+}
+
+.mapCanvas {
+  height: 100%;
+  min-height: 620px;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 5;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.88);
+  pointer-events: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+.tooltip strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (max-width: 960px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .stage {
+    padding-top: 0;
+  }
+
+  .mapWrap,
+  .mapCanvas {
+    min-height: 440px;
+  }
+}

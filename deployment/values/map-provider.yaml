@@ -1,0 +1,8 @@
+fullnameOverride: map-provider
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/your-project/map-provider
+  tag: latest
+
+route:
+  enabled: true

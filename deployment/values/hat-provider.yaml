@@ -1,0 +1,8 @@
+fullnameOverride: hat-provider
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/your-project/hat-provider
+  tag: latest
+
+route:
+  enabled: true

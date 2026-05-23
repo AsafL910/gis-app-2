@@ -1,19 +1,3 @@
-export interface CatalogAsset {
-  id: string;
-  name: string;
-  path: string;
-  size: number;
-}
-
-export interface CatalogSet {
-  id: string;
-  name: string;
-  description: string;
-  maps: CatalogAsset[];
-  dtmLayers: CatalogAsset[];
-  vrtPath: string;
-}
-
 export interface LayerPayload {
   identifier: string;
   name: string;

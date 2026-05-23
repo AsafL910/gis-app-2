@@ -3,28 +3,15 @@ import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import WMTS from "ol/source/WMTS";
-import XYZ from "ol/source/XYZ";
 import WMTSTileGrid from "ol/tilegrid/WMTS";
 import { defaults as defaultControls } from "ol/control";
 import type { LayerPayload, LayersPayload } from "./types";
 import { fetchLayers } from "./api";
 
-function formatBytes(size: number): string {
-  if (size >= 1024 * 1024 * 1024) {
-    return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  }
-
-  if (size >= 1024 * 1024) {
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  return `${(size / 1024).toFixed(1)} KB`;
-}
-
 function buildTileLayer(layer: LayerPayload): TileLayer<WMTS> {
   const tileGrid = new WMTSTileGrid({
-    origin: [-180, 90],
-    resolutions: Array.from({ length: 23 }, (_, zoom) => 180 / 256 / 2 ** zoom),
+    origin: [-180, 180],
+    resolutions: Array.from({ length: 23 }, (_, zoom) => 360 / 256 / 2 ** zoom),
     matrixIds: Array.from({ length: 23 }, (_, zoom) => `${zoom}`)
   });
 
@@ -39,17 +26,16 @@ function buildTileLayer(layer: LayerPayload): TileLayer<WMTS> {
       style: "default"
     }),
     visible: true,
-    opacity: 0.82
+    opacity: 0.9
   });
 }
 
 export function App() {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
-  const dynamicLayersRef = useRef<TileLayer<WMTS>[]>([]);
+  const activeLayerRef = useRef<TileLayer<WMTS> | null>(null);
   const [payload, setPayload] = useState<LayersPayload | null>(null);
-  const [selectedLayerName, setSelectedLayerName] = useState("");
-  const [enabledLayerIds, setEnabledLayerIds] = useState<string[]>([]);
+  const [selectedLayerId, setSelectedLayerId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -60,14 +46,7 @@ export function App() {
     mapRef.current = new Map({
       target: mapElementRef.current,
       controls: defaultControls({ zoom: true, rotate: false }),
-      layers: [
-        new TileLayer({
-          source: new XYZ({
-            url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          }),
-          opacity: 1
-        })
-      ],
+      layers: [],
       view: new View({
         projection: "EPSG:4326",
         center: [34.8, 31.8],
@@ -80,10 +59,9 @@ export function App() {
     void (async () => {
       try {
         const nextPayload = await fetchLayers();
+        nextPayload.layers = nextPayload.layers.filter((layer) => layer.path.toLowerCase().endsWith(".gpkg") && !layer.path.toLowerCase().includes("sets/"));
         setPayload(nextPayload);
-        const firstLayer = nextPayload.layers[0]?.identifier ?? "";
-        setSelectedLayerName(firstLayer);
-        setEnabledLayerIds(firstLayer ? [firstLayer] : []);
+        setSelectedLayerId(nextPayload.layers[0]?.identifier ?? "");
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Unable to load provider layers.");
       }
@@ -96,146 +74,58 @@ export function App() {
       return;
     }
 
-    dynamicLayersRef.current.forEach((layer) => map.removeLayer(layer));
-    dynamicLayersRef.current = [];
+    if (activeLayerRef.current) {
+      map.removeLayer(activeLayerRef.current);
+      activeLayerRef.current = null;
+    }
 
-    const activeLayers = (payload?.layers ?? []).filter((layer) => enabledLayerIds.includes(layer.identifier));
-    const tileLayers = activeLayers.map(buildTileLayer);
-    tileLayers.forEach((layer) => map.addLayer(layer));
-    dynamicLayersRef.current = tileLayers;
-  }, [enabledLayerIds, payload]);
+    const selectedLayer = payload?.layers.find((layer) => layer.identifier === selectedLayerId);
+    if (!selectedLayer) {
+      return;
+    }
 
-  const selectedLayer = payload?.layers.find((layer) => layer.identifier === selectedLayerName) ?? null;
+    const nextLayer = buildTileLayer(selectedLayer);
+    map.addLayer(nextLayer);
+    activeLayerRef.current = nextLayer;
+
+    const bounds = selectedLayer.bounds.epsg4326;
+    if (bounds) {
+      map.getView().fit(bounds, {
+        padding: [32, 32, 32, 32],
+        duration: 250,
+        maxZoom: 12
+      });
+    }
+  }, [payload, selectedLayerId]);
 
   return (
-    <div className="shell">
+    <div className="layout">
       <aside className="sidebar">
-        <div>
-          <p className="eyebrow">Map Provider</p>
-          <h1>Global WMTS demo</h1>
-          <p className="lede">
-            This provider publishes globally addressable EPSG:4326 layers. No set id is required once the layer name is known.
-          </p>
+        <h1>Map Provider</h1>
+        <p className="subtitle">Available layers</p>
+
+        {error ? <div className="message error">{error}</div> : null}
+
+        <div className="layerList">
+          {(payload?.layers ?? []).length ? (
+            payload!.layers.map((layer) => (
+              <button
+                key={layer.identifier}
+                type="button"
+                className={`layerItem${layer.identifier === selectedLayerId ? " isActive" : ""}`}
+                onClick={() => setSelectedLayerId(layer.identifier)}
+              >
+                <strong>{layer.name}</strong>
+                <span>{layer.identifier}</span>
+              </button>
+            ))
+          ) : (
+            <div className="message">No published layers found.</div>
+          )}
         </div>
-
-        {error ? <div className="banner error">{error}</div> : null}
-
-        <section className="panel">
-          <label className="fieldLabel" htmlFor="layer-select">
-            Active layer
-          </label>
-          <select
-            id="layer-select"
-            className="select"
-            value={selectedLayerName}
-            onChange={(event) => {
-              const nextIdentifier = event.target.value;
-              setSelectedLayerName(nextIdentifier);
-              setEnabledLayerIds(nextIdentifier ? [nextIdentifier] : []);
-            }}
-          >
-            <option value="">Select a layer</option>
-            {(payload?.layers ?? []).map((layer) => (
-              <option key={layer.identifier} value={layer.identifier}>
-                {layer.name}
-              </option>
-            ))}
-          </select>
-
-          {selectedLayer ? (
-            <div className="meta">
-              <div>Layer: {selectedLayer.name}</div>
-              <div>File: {selectedLayer.path}</div>
-              <div>Capabilities: {payload?.service.capabilities_url}</div>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="panel">
-          <h2>Published maps</h2>
-          <div className="list">
-            {(payload?.layers ?? []).length ? (
-              payload!.layers.map((layer) => (
-                <div key={layer.identifier} className="listItem">
-                  <label className="checkboxRow">
-                    <input
-                      type="checkbox"
-                      checked={enabledLayerIds.includes(layer.identifier)}
-                      onChange={(event) => {
-                        setSelectedLayerName(layer.identifier);
-                        setEnabledLayerIds((current) =>
-                          event.target.checked
-                            ? [...new Set([...current, layer.identifier])]
-                            : current.filter((value) => value !== layer.identifier)
-                        );
-                      }}
-                    />
-                    <span>{layer.name}</span>
-                  </label>
-                  <small>
-                    {layer.path}
-                  </small>
-                </div>
-              ))
-            ) : (
-              <div className="empty">No WMTS-ready layers were published yet.</div>
-            )}
-          </div>
-        </section>
-
-        <section className="panel">
-          <h2>Provider status</h2>
-          <div className="list">
-            {(payload?.layers ?? []).map((layer) => (
-              <div key={layer.identifier} className="listItem compact">
-                <strong>{layer.name}</strong>
-                <small>{layer.path}</small>
-              </div>
-            ))}
-            {(payload?.skipped_layers ?? []).map((layer) => (
-              <div key={`${layer.identifier}-${layer.path}`} className="listItem warning">
-                <strong>{layer.name}</strong>
-                <small>{layer.reason}</small>
-              </div>
-            ))}
-            {!payload?.layers.length && !payload?.skipped_layers.length ? (
-              <div className="empty">No layers discovered yet.</div>
-            ) : null}
-          </div>
-        </section>
-
-        {selectedLayer ? (
-          <section className="panel">
-            <h2>Client-facing contract</h2>
-            <div className="list">
-              <div className="listItem compact">
-                <strong>Capabilities</strong>
-                <small>{payload?.service.capabilities_url}</small>
-              </div>
-              <div className="listItem compact">
-                <strong>Layer name</strong>
-                <small>{selectedLayer.identifier}</small>
-              </div>
-              <div className="listItem compact">
-                <strong>Tile mode</strong>
-                <small>{selectedLayer.source_modes.join(", ")}</small>
-              </div>
-            </div>
-          </section>
-        ) : null}
       </aside>
 
-      <main className="stage">
-        <div className="stageHeader">
-          <div>
-            <p className="eyebrow">OpenLayers preview</p>
-            <h2>{selectedLayer?.name ?? "Choose a layer"}</h2>
-          </div>
-          <div className="badges">
-            <span className="badge">EPSG:4326 only</span>
-            <span className="badge">{payload?.layers.length ?? 0} published layers</span>
-          </div>
-        </div>
+      <main className="mapPanel">
         <div ref={mapElementRef} className="mapCanvas" />
       </main>
     </div>

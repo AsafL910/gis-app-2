@@ -46,28 +46,21 @@ async function storeUploadedFile(
   };
 }
 
-async function copySharedFileIntoSet(
+async function linkSharedFileIntoSet(
   setId: string,
   kind: StoredAssetKind,
   sharedRelativePath: string
 ): Promise<StoredAsset> {
   const sharedFile = await resolveSharedGpkg(sharedRelativePath);
   const assetId = createId(kind);
-  const sourceExtension = path.extname(sharedFile.fileName) || ".gpkg";
-  const storedName = `${assetId}${sourceExtension}`;
-  const relativePath = path.join("sets", setId, kind, storedName);
-  const absolutePath = path.join(config.sharedDataRoot, relativePath);
-
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.copyFile(sharedFile.absolutePath, absolutePath);
 
   return {
     id: assetId,
     kind,
     originalName: sharedFile.fileName,
-    storedName,
-    relativePath,
-    absolutePath,
+    storedName: sharedFile.fileName,
+    relativePath: sharedRelativePath,
+    absolutePath: sharedFile.absolutePath,
     mimeType: "application/geopackage+sqlite3",
     size: sharedFile.size,
     createdAt: new Date().toISOString()
@@ -106,12 +99,12 @@ export async function createSet(params: {
   const storedMaps = [
     ...(await Promise.all(params.maps.map((file) => storeUploadedFile(setId, "map", file)))),
     ...(await Promise.all(
-      (params.selectedMapPaths ?? []).map((filePath) => copySharedFileIntoSet(setId, "map", filePath))
+      (params.selectedMapPaths ?? []).map((filePath) => linkSharedFileIntoSet(setId, "map", filePath))
     ))
   ];
   const uploadedDtms = await Promise.all(params.dtms.map((file) => storeUploadedFile(setId, "dtm", file)));
   const selectedDtmPaths = params.selectedDtmPaths ?? [];
-  const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => copySharedFileIntoSet(setId, "dtm", filePath)));
+  const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => linkSharedFileIntoSet(setId, "dtm", filePath)));
   const copiedByRelativePath = new Map(selectedDtmPaths.map((filePath, index) => [filePath, copiedDtms[index]]));
   const uploadQueue = [...uploadedDtms];
   const storedDtms =

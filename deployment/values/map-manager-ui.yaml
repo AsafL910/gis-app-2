@@ -1,0 +1,12 @@
+fullnameOverride: map-manager-ui
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/your-project/map-manager-ui
+  tag: latest
+
+env:
+  PORT: "5173"
+  VITE_PROXY_TARGET: http://map-manager:4002
+
+route:
+  enabled: true

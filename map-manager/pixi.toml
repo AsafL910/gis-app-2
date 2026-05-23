@@ -1,0 +1,15 @@
+[project]
+name = "map-manager"
+version = "0.1.0"
+description = "Node.js map management service with GDAL-backed VRT generation"
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+nodejs = "22.*"
+gdal = ">=3.9.0,<4"
+
+[tasks]
+dev = "npm run dev"
+build = "npm run build"
+start = "npm run start"

@@ -11,14 +11,12 @@ platforms = ["win-64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-start = "uvicorn src.main:app --reload --host 0.0.0.0 --port 8003"
+dev = "uvicorn src.main:app --reload --host 0.0.0.0 --port 8003"
+start = "uvicorn src.main:app --host 0.0.0.0 --port 8003"
 
 [dependencies]
-python = "==3.12"
+python = ">=3.11,<3.12"
 fastapi = "*"
 uvicorn = "*"
-pip = "*"
+gdal = ">=3.10,<3.11"
 
-[pypi-dependencies]
-numpy = "*"
-rasterio = "*"

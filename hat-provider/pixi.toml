@@ -1,0 +1,24 @@
+[workspace]
+authors = ["Asaf Lumer <asaflumer@gmail.com>"]
+channels = [
+    "conda-forge",
+    "https://repo.anaconda.com/pkgs/main",
+    "https://repo.anaconda.com/pkgs/r",
+    "https://repo.anaconda.com/pkgs/msys2",
+]
+name = "hat-provider"
+platforms = ["win-64", "linux-64"]
+version = "0.1.0"
+
+[tasks]
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8004"
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8004"
+
+[dependencies]
+python = ">=3.11,<3.12"
+fastapi = "*"
+uvicorn = "*"
+gdal = ">=3.10,<3.11"
+
+numpy = "*"
+rasterio = ">=1.4,<1.5"

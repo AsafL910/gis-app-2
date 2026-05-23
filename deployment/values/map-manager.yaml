@@ -1,0 +1,8 @@
+fullnameOverride: map-manager
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/your-project/map-manager
+  tag: latest
+
+route:
+  enabled: true

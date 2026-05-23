@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -12,6 +13,16 @@ from src.routes.wmts import router as wmts_router
 app = FastAPI(
     title="Map Server",
     description="Set-aware GeoPackage WMTS service with OpenLayers demo",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 if FRONTEND_DIST_DIR.exists():

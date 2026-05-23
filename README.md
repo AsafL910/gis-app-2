@@ -6,6 +6,8 @@ Distributed GIS demo workspace with three components:
 - `terrain-calculator`: Python + FastAPI + GDAL terrain service
 - `map-manager-ui`: React + Vite + MUI dashboard
 - `map-provider`: Python WMTS provider with a React + Vite + OpenLayers demo frontend
+- `hat-provider`: Python terrain RGB XYZ provider backed by VRT-referenced GeoPackages
+- `example-client`: standalone React + OpenLayers client example for WMTS + terrain RGB consumption
 
 The shared `data/` folder is the current source of truth.
 
@@ -30,6 +32,8 @@ The repository now includes:
 - [terrain-calculator/Dockerfile](D:\Courses\MAPS\israel\glb-demo\gis-app2\terrain-calculator\Dockerfile)
 - [map-manager-ui/Dockerfile](D:\Courses\MAPS\israel\glb-demo\gis-app2\map-manager-ui\Dockerfile)
 - [map-provider/Dockerfile](D:\Courses\MAPS\israel\glb-demo\gis-app2\map-provider\Dockerfile)
+- [hat-provider/Dockerfile](D:\Courses\MAPS\israel\glb-demo\gis-app2\hat-provider\Dockerfile)
+- [example-client](D:\Courses\MAPS\israel\glb-demo\gis-app2\example-client)
 
 All data-sharing services mount the same host folder:
 
@@ -44,10 +48,11 @@ docker compose up --build
 
 Published ports:
 
-- Management API: `http://localhost:4000`
+- Management API: `http://localhost:4002`
 - Terrain API: `http://localhost:8000`
 - Management dashboard: `http://localhost:5173`
 - Map provider demo: `http://localhost:8003`
+- Hat provider API: `http://localhost:8004`
 
 ## Management service
 
@@ -131,7 +136,7 @@ npm install
 npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to `http://localhost:4000`.
+The Vite dev server proxies `/api` requests to `http://localhost:4002`.
 
 ## Map provider
 
@@ -150,6 +155,32 @@ Notes:
 
 - Only raster GeoPackages readable by `rasterio` and already in `EPSG:4326` are published as WMTS-ready overlays.
 - Unsupported or non-raster map assets are listed in the demo as skipped layers with a reason.
+
+## Hat provider
+
+Location: [hat-provider](D:\Courses\MAPS\israel\glb-demo\gis-app2\hat-provider)
+
+The provider is intentionally separate from `map-provider` and serves terrain RGB PNG tiles for XYZ clients.
+It reads each set VRT from `data/sets.json`, inspects the GeoPackages referenced by that VRT for metadata, and reads tile pixels from the VRT itself so GDAL source precedence follows the VRT order.
+
+Key endpoints:
+
+- `GET /api/hat/sets`
+- `GET /api/hat/sets/:setId`
+- `GET /api/hat/sets/:setId/tiles/:z/:x/:y.png`
+- `GET /api/hat/sets/:setId/tiles/EPSG4326/:z/:x/:y.png`
+
+Notes:
+
+- Tile composition follows the generated VRT order rather than custom per-source ranking in the service.
+- PNG output remains lossless; any pixel changes come from tile sampling or reprojection rather than PNG compression.
+
+## Example client
+
+Location: [example-client](D:\Courses\MAPS\israel\glb-demo\gis-app2\example-client)
+
+This standalone React + TypeScript + OpenLayers app is intentionally separate from the GIS services.
+It demonstrates how a consumer can discover sets from `map-provider`, request set-specific WMTS metadata, and overlay `hat-provider` terrain RGB tiles with hover-based elevation decoding.
 
 ## Current assumptions
 

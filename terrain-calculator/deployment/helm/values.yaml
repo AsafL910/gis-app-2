@@ -1,0 +1,47 @@
+nameOverride: ""
+fullnameOverride: terrain-calculator
+
+replicaCount: 1
+
+image:
+  repository: terrain-calculator
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+container:
+  port: 8000
+
+env:
+  DATA_DIR: /app/data
+  PORT: "8000"
+
+persistence:
+  enabled: true
+  mountPath: /app/data
+  existingClaim: ""
+  readOnly: false
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    enabled: false
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+podSecurityContext: {}
+securityContext: {}
+resources: {}
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  sharedPvc:
+    claimName: ""

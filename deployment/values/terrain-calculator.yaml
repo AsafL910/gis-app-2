@@ -1,0 +1,8 @@
+fullnameOverride: terrain-calculator
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/your-project/terrain-calculator
+  tag: latest
+
+route:
+  enabled: true

@@ -1,0 +1,13 @@
+fullnameOverride: example-client
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/your-project/example-client
+  tag: latest
+
+env:
+  PORT: "4174"
+  VITE_MAP_PROVIDER_BASE_URL: http://map-provider:8003
+  VITE_HAT_PROVIDER_BASE_URL: http://hat-provider:8004
+
+route:
+  enabled: true

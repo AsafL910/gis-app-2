@@ -1,0 +1,47 @@
+nameOverride: ""
+fullnameOverride: map-manager
+
+replicaCount: 1
+
+image:
+  repository: map-manager
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 4002
+  targetPort: 4002
+
+container:
+  port: 4002
+
+env:
+  DATA_DIR: /app/data
+  PORT: "4002"
+
+persistence:
+  enabled: true
+  mountPath: /app/data
+  existingClaim: ""
+  readOnly: false
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    enabled: false
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+podSecurityContext: {}
+securityContext: {}
+resources: {}
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  sharedPvc:
+    claimName: ""

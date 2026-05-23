@@ -1,10 +1,7 @@
 :root {
-  color: #e8eef2;
-  background:
-    radial-gradient(circle at top left, rgba(22, 163, 74, 0.18), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.16), transparent 25%),
-    #09131a;
-  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  color: #1f2937;
+  background: #f3f4f6;
+  font-family: "Segoe UI", sans-serif;
 }
 
 * {
@@ -19,171 +16,96 @@ body {
   min-height: 100vh;
 }
 
-.shell {
+.layout {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: 320px 1fr;
 }
 
 .sidebar {
-  padding: 28px;
-  background: rgba(8, 15, 22, 0.84);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(14px);
+  padding: 20px;
+  background: #ffffff;
+  border-right: 1px solid #d1d5db;
   overflow: auto;
 }
 
-.eyebrow {
-  margin: 0 0 10px;
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #7dd3fc;
+.sidebar h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
 }
 
-h1,
-h2 {
-  margin: 0;
+.subtitle {
+  margin: 0 0 16px;
+  color: #4b5563;
 }
 
-.lede {
-  color: rgba(232, 238, 242, 0.76);
-  line-height: 1.5;
+.layerList {
+  display: grid;
+  gap: 10px;
 }
 
-.panel {
-  margin-top: 22px;
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.fieldLabel {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 13px;
-  color: rgba(232, 238, 242, 0.82);
-}
-
-.select {
+.layerItem {
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(8, 15, 22, 0.95);
-  color: #f8fafc;
-}
-
-.meta {
-  margin-top: 12px;
-  display: grid;
-  gap: 8px;
-  font-size: 13px;
-  color: rgba(232, 238, 242, 0.72);
-}
-
-.list {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.listItem {
   padding: 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  cursor: pointer;
 }
 
-.listItem small {
+.layerItem strong,
+.layerItem span {
   display: block;
-  margin-top: 6px;
-  color: rgba(232, 238, 242, 0.68);
-  line-height: 1.45;
 }
 
-.listItem.warning {
-  border-color: rgba(251, 191, 36, 0.22);
-  background: rgba(251, 191, 36, 0.08);
-}
-
-.checkboxRow {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.checkboxRow input {
-  width: 16px;
-  height: 16px;
-}
-
-.empty {
-  padding: 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(232, 238, 242, 0.64);
-}
-
-.banner {
-  margin-top: 18px;
-  padding: 14px;
-  border-radius: 14px;
-}
-
-.banner.error {
-  background: rgba(239, 68, 68, 0.14);
-  border: 1px solid rgba(239, 68, 68, 0.24);
-}
-
-.stage {
-  padding: 24px;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 18px;
-}
-
-.stageHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.badges {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.badge {
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.layerItem span {
+  margin-top: 4px;
+  color: #6b7280;
   font-size: 13px;
+}
+
+.layerItem.isActive {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.message {
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.message.error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.mapPanel {
+  padding: 20px;
+  overflow: hidden;
 }
 
 .mapCanvas {
-  min-height: 620px;
-  border-radius: 24px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 40px);
+  border: 1px solid #d1d5db;
 }
 
-@media (max-width: 960px) {
-  .shell {
+@media (max-width: 900px) {
+  .layout {
     grid-template-columns: 1fr;
   }
 
   .sidebar {
     border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid #d1d5db;
   }
 
   .mapCanvas {
-    min-height: 420px;
+    min-height: 60vh;
   }
 }

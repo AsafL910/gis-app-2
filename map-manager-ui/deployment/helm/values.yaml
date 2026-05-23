@@ -1,0 +1,47 @@
+nameOverride: ""
+fullnameOverride: map-manager-ui
+
+replicaCount: 1
+
+image:
+  repository: map-manager-ui
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 5173
+  targetPort: 5173
+
+container:
+  port: 5173
+
+env:
+  PORT: "5173"
+  VITE_PROXY_TARGET: http://map-manager:4002
+
+persistence:
+  enabled: false
+  mountPath: /app/data
+  existingClaim: ""
+  readOnly: true
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    enabled: false
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+podSecurityContext: {}
+securityContext: {}
+resources: {}
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  sharedPvc:
+    claimName: ""

@@ -1,0 +1,47 @@
+nameOverride: ""
+fullnameOverride: map-provider
+
+replicaCount: 1
+
+image:
+  repository: map-provider
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8003
+  targetPort: 8003
+
+container:
+  port: 8003
+
+env:
+  DATA_DIR: /app/data
+  PORT: "8003"
+
+persistence:
+  enabled: true
+  mountPath: /app/data
+  existingClaim: ""
+  readOnly: false
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    enabled: false
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+podSecurityContext: {}
+securityContext: {}
+resources: {}
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  sharedPvc:
+    claimName: ""

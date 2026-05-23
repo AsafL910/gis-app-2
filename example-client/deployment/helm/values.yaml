@@ -1,0 +1,48 @@
+nameOverride: ""
+fullnameOverride: example-client
+
+replicaCount: 1
+
+image:
+  repository: example-client
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 4174
+  targetPort: 4174
+
+container:
+  port: 4174
+
+env:
+  PORT: "4174"
+  VITE_MAP_PROVIDER_BASE_URL: http://map-provider:8003
+  VITE_HAT_PROVIDER_BASE_URL: http://hat-provider:8004
+
+persistence:
+  enabled: false
+  mountPath: /app/data
+  existingClaim: ""
+  readOnly: true
+
+route:
+  enabled: false
+  host: ""
+  tls:
+    enabled: false
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+podSecurityContext: {}
+securityContext: {}
+resources: {}
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  sharedPvc:
+    claimName: ""
