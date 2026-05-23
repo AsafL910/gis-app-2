@@ -1,0 +1,1 @@
+export const DEFAULT_MAP_BRIGHTNESS = 100;

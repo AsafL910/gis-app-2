@@ -1,26 +1,54 @@
 from dataclasses import dataclass
 from functools import lru_cache
+import logging
 from pathlib import Path
 from urllib.parse import quote
 from xml.etree.ElementTree import Element, SubElement, register_namespace, tostring
 
 import sqlite3
 from fastapi import HTTPException
-from fastapi.responses import Response
 
-from src.config import WMTS_TILE_SIZE, load_wmts_gpkg_layers, resolve_data_path
+from src.config import GPKG_DEBUG_LOGGING, load_wmts_gpkg_layers, resolve_data_path
 
 
-WGS84 = "EPSG:4326"
-WMTS_MATRIX_SET = "EPSG4326"
-WORLD_MIN_X = -180.0
-WORLD_MAX_X = 180.0
-WORLD_MIN_Y = -180.0
-WORLD_MAX_Y = 180.0
-WORLD_WIDTH = WORLD_MAX_X - WORLD_MIN_X
-WORLD_HEIGHT = WORLD_MAX_Y - WORLD_MIN_Y
-INITIAL_RESOLUTION = WORLD_HEIGHT / WMTS_TILE_SIZE
 OGC_PIXEL_SIZE = 0.00028
+logger = logging.getLogger("map_provider.wmts")
+logger.disabled = not GPKG_DEBUG_LOGGING
+
+
+@dataclass(frozen=True)
+class SpatialRefMetadata:
+    srs_id: int
+    organization: str
+    organization_coordsys_id: int
+    definition: str
+
+    @property
+    def supported_crs(self) -> str:
+        if self.organization.upper() == "EPSG" and self.organization_coordsys_id > 0:
+            return f"urn:ogc:def:crs:EPSG::{self.organization_coordsys_id}"
+        if self.organization and self.organization_coordsys_id > 0:
+            return f"{self.organization}:{self.organization_coordsys_id}"
+        return self.definition or str(self.srs_id)
+
+
+@dataclass(frozen=True)
+class TileMatrixMetadata:
+    zoom_level: int
+    matrix_width: int
+    matrix_height: int
+    tile_width: int
+    tile_height: int
+    pixel_x_size: float
+    pixel_y_size: float
+    min_tile_col: int
+    max_tile_col: int
+    min_tile_row: int
+    max_tile_row: int
+
+    @property
+    def scale_denominator(self) -> float:
+        return self.pixel_x_size / OGC_PIXEL_SIZE
 
 
 @dataclass(frozen=True)
@@ -29,8 +57,33 @@ class WmtsLayerMetadata:
     title: str
     relative_path: str
     absolute_path: Path
-    bounds_4326: tuple[float, float, float, float]
-    band_count: int
+    table_name: str
+    content_identifier: str
+    native_bounds: tuple[float, float, float, float]
+    bounds_4326: tuple[float, float, float, float] | None
+    matrix_set_bounds: tuple[float, float, float, float]
+    spatial_ref: SpatialRefMetadata
+    tile_matrices: tuple[TileMatrixMetadata, ...]
+    mime_type: str
+    file_extension: str
+
+    @property
+    def matrix_set_identifier(self) -> str:
+        return f"matrixset_{self.identifier}"
+
+    @property
+    def min_zoom(self) -> int:
+        return self.tile_matrices[0].zoom_level
+
+    @property
+    def max_zoom(self) -> int:
+        return self.tile_matrices[-1].zoom_level
+
+    def tile_matrix_by_zoom(self, zoom_level: int) -> TileMatrixMetadata | None:
+        for matrix in self.tile_matrices:
+            if matrix.zoom_level == zoom_level:
+                return matrix
+        return None
 
 
 @dataclass(frozen=True)
@@ -47,6 +100,49 @@ class LayerCandidate:
     title: str
     relative_path: str
     absolute_path: Path
+
+
+def _candidate_log_context(candidate: LayerCandidate) -> dict[str, str]:
+    return {
+        "candidate_identifier": candidate.identifier,
+        "candidate_title": candidate.title,
+        "relative_path": candidate.relative_path,
+        "absolute_path": str(candidate.absolute_path),
+    }
+
+
+def _layer_log_context(layer: WmtsLayerMetadata) -> dict[str, str | int | float]:
+    return {
+        "layer_identifier": layer.identifier,
+        "layer_title": layer.title,
+        "relative_path": layer.relative_path,
+        "absolute_path": str(layer.absolute_path),
+        "table_name": layer.table_name,
+        "content_identifier": layer.content_identifier,
+        "supported_crs": layer.spatial_ref.supported_crs,
+        "srs_id": layer.spatial_ref.srs_id,
+        "mime_type": layer.mime_type,
+        "file_extension": layer.file_extension,
+        "native_bounds": layer.native_bounds,
+        "matrix_set_bounds": layer.matrix_set_bounds,
+        "zoom_levels": [matrix.zoom_level for matrix in layer.tile_matrices],
+        "matrix_sizes": [f"{matrix.matrix_width}x{matrix.matrix_height}" for matrix in layer.tile_matrices],
+        "tile_sizes": [f"{matrix.tile_width}x{matrix.tile_height}" for matrix in layer.tile_matrices],
+        "tile_col_ranges": [f"{matrix.min_tile_col}-{matrix.max_tile_col}" for matrix in layer.tile_matrices],
+        "tile_row_ranges": [f"{matrix.min_tile_row}-{matrix.max_tile_row}" for matrix in layer.tile_matrices],
+    }
+
+
+def _skipped_log_context(skipped: "SkippedLayer", candidate: LayerCandidate | None = None) -> dict[str, str]:
+    context = {
+        "layer_identifier": skipped.identifier,
+        "layer_title": skipped.title,
+        "relative_path": skipped.relative_path,
+        "reason": skipped.reason,
+    }
+    if candidate:
+        context["absolute_path"] = str(candidate.absolute_path)
+    return context
 
 
 def _published_name(raw_name: str) -> str:
@@ -71,6 +167,15 @@ def _iter_candidates(set_id: str | None = None) -> list[LayerCandidate]:
                     absolute_path=asset.absolute_path,
                 )
             )
+        logger.info(
+            "Prepared set WMTS candidates",
+            extra={
+                "set_id": set_id,
+                "map_asset_count": len(map_set.maps),
+                "dtm_asset_count": len(map_set.dtm_layers),
+                "candidate_count": len(candidates),
+            },
+        )
         return candidates
 
     for layer_config in load_wmts_gpkg_layers():
@@ -83,6 +188,7 @@ def _iter_candidates(set_id: str | None = None) -> list[LayerCandidate]:
                 absolute_path=resolve_data_path(layer_config.relative_path),
             )
         )
+    logger.info("Prepared global WMTS candidates", extra={"candidate_count": len(candidates)})
     return candidates
 
 
@@ -97,44 +203,207 @@ def _duplicate_identifiers(candidates: list[LayerCandidate]) -> set[str]:
     return duplicates
 
 
+def _detect_tile_format(tile_blob: bytes | None) -> tuple[str, str]:
+    if not tile_blob:
+        return "image/png", "png"
+    if tile_blob.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if tile_blob.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if tile_blob.startswith(b"RIFF") and tile_blob[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    return "application/octet-stream", "bin"
+
+
+def _build_layer_identifier(candidate_identifier: str, content_identifier: str, table_name: str, table_count: int) -> str:
+    if table_count <= 1:
+        return candidate_identifier
+
+    suffix_source = content_identifier.strip() or table_name.strip() or "tiles"
+    suffix = _published_name(suffix_source)
+    if suffix == candidate_identifier:
+        suffix = f"{suffix}-tiles"
+    return f"{candidate_identifier}-{suffix}"
+
+
+def _read_spatial_ref(cursor: sqlite3.Cursor, srs_id: int) -> SpatialRefMetadata:
+    cursor.execute(
+        """
+        SELECT srs_id, organization, organization_coordsys_id, definition
+        FROM gpkg_spatial_ref_sys
+        WHERE srs_id = ?
+        """,
+        (srs_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return SpatialRefMetadata(srs_id=srs_id, organization="", organization_coordsys_id=0, definition="")
+    return SpatialRefMetadata(
+        srs_id=int(row[0]),
+        organization=str(row[1] or ""),
+        organization_coordsys_id=int(row[2] or 0),
+        definition=str(row[3] or ""),
+    )
+
+
+def _read_tile_matrices(cursor: sqlite3.Cursor, table_name: str) -> tuple[TileMatrixMetadata, ...]:
+    cursor.execute(
+        f"""
+        SELECT
+            m.zoom_level,
+            m.matrix_width,
+            m.matrix_height,
+            m.tile_width,
+            m.tile_height,
+            m.pixel_x_size,
+            m.pixel_y_size,
+            COALESCE(stats.min_tile_col, 0),
+            COALESCE(stats.max_tile_col, m.matrix_width - 1),
+            COALESCE(stats.min_tile_row, 0),
+            COALESCE(stats.max_tile_row, m.matrix_height - 1)
+        FROM gpkg_tile_matrix AS m
+        LEFT JOIN (
+            SELECT
+                zoom_level,
+                MIN(tile_column) AS min_tile_col,
+                MAX(tile_column) AS max_tile_col,
+                MIN(tile_row) AS min_tile_row,
+                MAX(tile_row) AS max_tile_row
+            FROM "{table_name}"
+            GROUP BY zoom_level
+        ) AS stats
+            ON stats.zoom_level = m.zoom_level
+        WHERE m.table_name = ?
+        ORDER BY m.zoom_level
+        """,
+        (table_name,),
+    )
+    rows = cursor.fetchall()
+    return tuple(
+        TileMatrixMetadata(
+            zoom_level=int(row[0]),
+            matrix_width=int(row[1]),
+            matrix_height=int(row[2]),
+            tile_width=int(row[3]),
+            tile_height=int(row[4]),
+            pixel_x_size=float(row[5]),
+            pixel_y_size=float(row[6]),
+            min_tile_col=int(row[7]),
+            max_tile_col=int(row[8]),
+            min_tile_row=int(row[9]),
+            max_tile_row=int(row[10]),
+        )
+        for row in rows
+    )
+
+
 @lru_cache(maxsize=128)
-def _inspect_candidate(candidate: LayerCandidate) -> WmtsLayerMetadata | SkippedLayer:
+def _inspect_candidate(candidate: LayerCandidate) -> tuple[WmtsLayerMetadata | SkippedLayer, ...]:
     try:
+        logger.info("Inspecting GeoPackage candidate", extra=_candidate_log_context(candidate))
         with sqlite3.connect(candidate.absolute_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT table_name FROM gpkg_contents WHERE data_type = 'tiles'")
-            row = cursor.fetchone()
-            if not row:
-                return SkippedLayer(
+            cursor.execute(
+                """
+                SELECT table_name, identifier, srs_id, min_x, min_y, max_x, max_y
+                FROM gpkg_contents
+                WHERE data_type = 'tiles'
+                ORDER BY table_name
+                """
+            )
+            rows = cursor.fetchall()
+            if not rows:
+                skipped = SkippedLayer(
                     identifier=candidate.identifier,
                     title=candidate.title,
                     relative_path=candidate.relative_path,
                     reason="No tiles table found in GeoPackage",
                 )
+                logger.warning("Skipping GeoPackage candidate", extra=_skipped_log_context(skipped, candidate))
+                return (skipped,)
 
-            table_name = row[0]
-            cursor.execute("SELECT min_x, min_y, max_x, max_y FROM gpkg_contents WHERE table_name = ?", (table_name,))
-            bounds_row = cursor.fetchone()
-            if not bounds_row or None in bounds_row:
-                bounds_4326 = (-180.0, -90.0, 180.0, 90.0)
-            else:
-                bounds_4326 = tuple(bounds_row)
-
-            return WmtsLayerMetadata(
-                identifier=candidate.identifier,
-                title=candidate.title,
-                relative_path=candidate.relative_path,
-                absolute_path=candidate.absolute_path,
-                bounds_4326=bounds_4326,
-                band_count=3,
+            table_count = len(rows)
+            logger.info(
+                "Discovered tile tables in GeoPackage",
+                extra={**_candidate_log_context(candidate), "table_count": table_count, "table_names": [str(row[0]) for row in rows]},
             )
+            layers: list[WmtsLayerMetadata | SkippedLayer] = []
+
+            for row in rows:
+                table_name = str(row[0])
+                content_identifier = str(row[1] or candidate.identifier)
+                srs_id = int(row[2])
+                native_bounds = tuple(float(value) for value in row[3:7])
+                layer_identifier = _build_layer_identifier(candidate.identifier, content_identifier, table_name, table_count)
+                layer_title = layer_identifier if table_count > 1 else candidate.title
+
+                cursor.execute(
+                    """
+                    SELECT min_x, min_y, max_x, max_y
+                    FROM gpkg_tile_matrix_set
+                    WHERE table_name = ?
+                    """,
+                    (table_name,),
+                )
+                matrix_set_row = cursor.fetchone()
+                if not matrix_set_row:
+                    skipped = SkippedLayer(
+                        identifier=layer_identifier,
+                        title=layer_title,
+                        relative_path=candidate.relative_path,
+                        reason=f'GeoPackage table "{table_name}" is missing gpkg_tile_matrix_set metadata',
+                    )
+                    logger.warning("Skipping GeoPackage table", extra={**_skipped_log_context(skipped, candidate), "table_name": table_name})
+                    layers.append(skipped)
+                    continue
+
+                matrix_set_bounds = tuple(float(value) for value in matrix_set_row)
+                tile_matrices = _read_tile_matrices(cursor, table_name)
+                if not tile_matrices:
+                    skipped = SkippedLayer(
+                        identifier=layer_identifier,
+                        title=layer_title,
+                        relative_path=candidate.relative_path,
+                        reason=f'GeoPackage table "{table_name}" is missing gpkg_tile_matrix rows',
+                    )
+                    logger.warning("Skipping GeoPackage table", extra={**_skipped_log_context(skipped, candidate), "table_name": table_name})
+                    layers.append(skipped)
+                    continue
+
+                cursor.execute(f'SELECT tile_data FROM "{table_name}" LIMIT 1')
+                sample_tile_row = cursor.fetchone()
+                mime_type, file_extension = _detect_tile_format(sample_tile_row[0] if sample_tile_row else None)
+                spatial_ref = _read_spatial_ref(cursor, srs_id)
+                bounds_4326 = native_bounds if spatial_ref.organization.upper() == "EPSG" and spatial_ref.organization_coordsys_id == 4326 else None
+
+                layer = WmtsLayerMetadata(
+                    identifier=layer_identifier,
+                    title=layer_title,
+                    relative_path=candidate.relative_path,
+                    absolute_path=candidate.absolute_path,
+                    table_name=table_name,
+                    content_identifier=content_identifier,
+                    native_bounds=native_bounds,
+                    bounds_4326=bounds_4326,
+                    matrix_set_bounds=matrix_set_bounds,
+                    spatial_ref=spatial_ref,
+                    tile_matrices=tile_matrices,
+                    mime_type=mime_type,
+                    file_extension=file_extension,
+                )
+                logger.info("GeoPackage table is WMTS-publishable", extra=_layer_log_context(layer))
+                layers.append(layer)
+
+            return tuple(layers)
     except Exception as exc:
-        return SkippedLayer(
+        skipped = SkippedLayer(
             identifier=candidate.identifier,
             title=candidate.title,
             relative_path=candidate.relative_path,
             reason=f"Unable to read GeoPackage: {exc}",
         )
+        logger.exception("Failed to inspect GeoPackage candidate", extra=_candidate_log_context(candidate))
+        return (skipped,)
 
 
 def list_wmts_layers(set_id: str | None = None) -> list[WmtsLayerMetadata]:
@@ -143,17 +412,33 @@ def list_wmts_layers(set_id: str | None = None) -> list[WmtsLayerMetadata]:
     layers: list[WmtsLayerMetadata] = []
     for candidate in candidates:
         if candidate.identifier in duplicates:
+            logger.warning("Skipping duplicate global candidate identifier", extra=_candidate_log_context(candidate))
             continue
-        inspected = _inspect_candidate(candidate)
-        if isinstance(inspected, WmtsLayerMetadata):
-            layers.append(inspected)
-    return layers
+        for inspected in _inspect_candidate(candidate):
+            if isinstance(inspected, WmtsLayerMetadata):
+                layers.append(inspected)
+
+    identifier_counts: dict[str, int] = {}
+    for layer in layers:
+        identifier_counts[layer.identifier] = identifier_counts.get(layer.identifier, 0) + 1
+    unique_layers: list[WmtsLayerMetadata] = []
+    for layer in layers:
+        if identifier_counts[layer.identifier] == 1:
+            unique_layers.append(layer)
+        else:
+            logger.warning(
+                "Skipping duplicate published layer identifier after table expansion",
+                extra=_layer_log_context(layer),
+            )
+    logger.info("Resolved publishable WMTS layers", extra={"published_layer_count": len(unique_layers), "set_id": set_id or ""})
+    return unique_layers
 
 
 def list_skipped_wmts_layers(set_id: str | None = None) -> list[SkippedLayer]:
     candidates = _iter_candidates(set_id)
     duplicates = _duplicate_identifiers(candidates)
     skipped: list[SkippedLayer] = []
+    successful_layers: list[WmtsLayerMetadata] = []
     for candidate in candidates:
         if candidate.identifier in duplicates:
             skipped.append(
@@ -165,9 +450,25 @@ def list_skipped_wmts_layers(set_id: str | None = None) -> list[SkippedLayer]:
                 )
             )
             continue
-        inspected = _inspect_candidate(candidate)
-        if isinstance(inspected, SkippedLayer):
-            skipped.append(inspected)
+        for inspected in _inspect_candidate(candidate):
+            if isinstance(inspected, SkippedLayer):
+                skipped.append(inspected)
+            else:
+                successful_layers.append(inspected)
+
+    identifier_counts: dict[str, int] = {}
+    for layer in successful_layers:
+        identifier_counts[layer.identifier] = identifier_counts.get(layer.identifier, 0) + 1
+    for layer in successful_layers:
+        if identifier_counts[layer.identifier] > 1:
+            skipped.append(
+                SkippedLayer(
+                    identifier=layer.identifier,
+                    title=layer.title,
+                    relative_path=layer.relative_path,
+                    reason="Duplicate published layer name after GeoPackage table expansion. Layer names must be globally unique.",
+                )
+            )
     return skipped
 
 
@@ -175,26 +476,15 @@ def get_wmts_layer(identifier: str, set_id: str | None = None) -> WmtsLayerMetad
     for layer in list_wmts_layers(set_id):
         if layer.identifier == identifier:
             return layer
+    logger.warning(
+        "WMTS layer lookup failed",
+        extra={
+            "requested_layer_identifier": identifier,
+            "set_id": set_id or "",
+            "available_layer_identifiers": [layer.identifier for layer in list_wmts_layers(set_id)],
+        },
+    )
     raise HTTPException(status_code=404, detail=f'WMTS layer "{identifier}" was not found')
-
-
-def _matrix_dimensions(tile_matrix: int) -> tuple[int, int]:
-    size = 2**tile_matrix
-    return size, size
-
-
-def _tile_bounds(tile_matrix: int, tile_row: int, tile_col: int) -> tuple[float, float, float, float]:
-    matrix_width, matrix_height = _matrix_dimensions(tile_matrix)
-    if tile_col < 0 or tile_row < 0 or tile_col >= matrix_width or tile_row >= matrix_height:
-        raise HTTPException(status_code=404, detail="Requested tile is outside the WMTS matrix")
-
-    tile_span_x = WORLD_WIDTH / matrix_width
-    tile_span_y = WORLD_HEIGHT / matrix_height
-    min_x = WORLD_MIN_X + tile_col * tile_span_x
-    max_x = min_x + tile_span_x
-    max_y = WORLD_MAX_Y - tile_row * tile_span_y
-    min_y = max_y - tile_span_y
-    return min_x, min_y, max_x, max_y
 
 
 def render_wmts_tile(
@@ -204,28 +494,95 @@ def render_wmts_tile(
     tile_row: int,
     tile_col: int,
     set_id: str | None = None,
-) -> bytes:
-    if tile_matrix_set != WMTS_MATRIX_SET:
+) -> tuple[bytes, str]:
+    layer = get_wmts_layer(identifier, set_id)
+    if tile_matrix_set != layer.matrix_set_identifier:
+        logger.warning(
+            "Rejected tile request because tile matrix set is unsupported",
+            extra={
+                **_layer_log_context(layer),
+                "requested_tile_matrix_set": tile_matrix_set,
+                "requested_tile_matrix": tile_matrix,
+                "requested_tile_row": tile_row,
+                "requested_tile_col": tile_col,
+                "set_id": set_id or "",
+            },
+        )
         raise HTTPException(status_code=404, detail=f"Unsupported tile matrix set {tile_matrix_set}")
 
-    layer = get_wmts_layer(identifier, set_id)
+    matrix = layer.tile_matrix_by_zoom(tile_matrix)
+    if not matrix:
+        logger.warning(
+            "Rejected tile request because tile matrix is unavailable",
+            extra={
+                **_layer_log_context(layer),
+                "requested_tile_matrix_set": tile_matrix_set,
+                "requested_tile_matrix": tile_matrix,
+                "requested_tile_row": tile_row,
+                "requested_tile_col": tile_col,
+                "set_id": set_id or "",
+            },
+        )
+        raise HTTPException(status_code=404, detail=f"Tile matrix {tile_matrix} is not available for layer {identifier}")
+
+    if tile_col < matrix.min_tile_col or tile_col > matrix.max_tile_col or tile_row < matrix.min_tile_row or tile_row > matrix.max_tile_row:
+        logger.warning(
+            "Rejected tile request because coordinates are outside available tile range",
+            extra={
+                **_layer_log_context(layer),
+                "requested_tile_matrix_set": tile_matrix_set,
+                "requested_tile_matrix": tile_matrix,
+                "requested_tile_row": tile_row,
+                "requested_tile_col": tile_col,
+                "available_tile_col_range": f"{matrix.min_tile_col}-{matrix.max_tile_col}",
+                "available_tile_row_range": f"{matrix.min_tile_row}-{matrix.max_tile_row}",
+                "set_id": set_id or "",
+            },
+        )
+        raise HTTPException(status_code=404, detail="Requested tile is outside the available tile range")
 
     with sqlite3.connect(layer.absolute_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM gpkg_contents WHERE data_type = 'tiles'")
-        row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="No tiles table found in GeoPackage")
-
-        table_name = row[0]
-        query = f'SELECT tile_data FROM "{table_name}" WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?'
+        query = f'SELECT tile_data FROM "{layer.table_name}" WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?'
         cursor.execute(query, (tile_matrix, tile_col, tile_row))
         tile = cursor.fetchone()
 
         if tile:
-            return tile[0]
+            logger.debug(
+                "Served WMTS tile",
+                extra={
+                    "layer_identifier": layer.identifier,
+                    "table_name": layer.table_name,
+                    "tile_matrix_set": tile_matrix_set,
+                    "tile_matrix": tile_matrix,
+                    "tile_row": tile_row,
+                    "tile_col": tile_col,
+                    "set_id": set_id or "",
+                },
+            )
+            return tile[0], layer.mime_type
 
+    logger.warning(
+        "Tile request matched metadata but no tile row was found in GeoPackage",
+        extra={
+            **_layer_log_context(layer),
+            "requested_tile_matrix_set": tile_matrix_set,
+            "requested_tile_matrix": tile_matrix,
+            "requested_tile_row": tile_row,
+            "requested_tile_col": tile_col,
+            "set_id": set_id or "",
+        },
+    )
     raise HTTPException(status_code=404, detail="Tile not found")
+
+
+def _tile_matrix_limits_xml(parent: Element, matrix: TileMatrixMetadata):
+    limits = SubElement(parent, "{http://www.opengis.net/wmts/1.0}TileMatrixLimits")
+    SubElement(limits, "{http://www.opengis.net/ows/1.1}Identifier").text = str(matrix.zoom_level)
+    SubElement(limits, "{http://www.opengis.net/wmts/1.0}MinTileRow").text = str(matrix.min_tile_row)
+    SubElement(limits, "{http://www.opengis.net/wmts/1.0}MaxTileRow").text = str(matrix.max_tile_row)
+    SubElement(limits, "{http://www.opengis.net/wmts/1.0}MinTileCol").text = str(matrix.min_tile_col)
+    SubElement(limits, "{http://www.opengis.net/wmts/1.0}MaxTileCol").text = str(matrix.max_tile_col)
 
 
 def build_wmts_capabilities_xml(base_url: str, set_id: str | None = None) -> str:
@@ -243,7 +600,7 @@ def build_wmts_capabilities_xml(base_url: str, set_id: str | None = None) -> str
     service_identification = SubElement(capabilities, "{http://www.opengis.net/ows/1.1}ServiceIdentification")
     SubElement(service_identification, "{http://www.opengis.net/ows/1.1}Title").text = "GeoPackage WMTS"
     SubElement(service_identification, "{http://www.opengis.net/ows/1.1}Abstract").text = (
-        "WMTS endpoint for EPSG:4326 GeoPackage rasters. Layer names are globally addressable."
+        "WMTS endpoint derived directly from GeoPackage tile metadata."
     )
     SubElement(service_identification, "{http://www.opengis.net/ows/1.1}ServiceType").text = "OGC WMTS"
     SubElement(service_identification, "{http://www.opengis.net/ows/1.1}ServiceTypeVersion").text = "1.0.0"
@@ -265,45 +622,60 @@ def build_wmts_capabilities_xml(base_url: str, set_id: str | None = None) -> str
         SubElement(layer_el, "{http://www.opengis.net/ows/1.1}Title").text = layer.title
         SubElement(layer_el, "{http://www.opengis.net/ows/1.1}Identifier").text = layer.identifier
 
-        lower_lon, lower_lat, upper_lon, upper_lat = layer.bounds_4326
-        wgs84_box = SubElement(layer_el, "{http://www.opengis.net/ows/1.1}WGS84BoundingBox")
-        SubElement(wgs84_box, "{http://www.opengis.net/ows/1.1}LowerCorner").text = f"{lower_lon} {lower_lat}"
-        SubElement(wgs84_box, "{http://www.opengis.net/ows/1.1}UpperCorner").text = f"{upper_lon} {upper_lat}"
+        bbox = SubElement(layer_el, "{http://www.opengis.net/ows/1.1}BoundingBox", {"crs": layer.spatial_ref.supported_crs})
+        SubElement(bbox, "{http://www.opengis.net/ows/1.1}LowerCorner").text = f"{layer.native_bounds[0]} {layer.native_bounds[1]}"
+        SubElement(bbox, "{http://www.opengis.net/ows/1.1}UpperCorner").text = f"{layer.native_bounds[2]} {layer.native_bounds[3]}"
+
+        if layer.bounds_4326:
+            wgs84_box = SubElement(layer_el, "{http://www.opengis.net/ows/1.1}WGS84BoundingBox")
+            SubElement(wgs84_box, "{http://www.opengis.net/ows/1.1}LowerCorner").text = f"{layer.bounds_4326[0]} {layer.bounds_4326[1]}"
+            SubElement(wgs84_box, "{http://www.opengis.net/ows/1.1}UpperCorner").text = f"{layer.bounds_4326[2]} {layer.bounds_4326[3]}"
 
         style_el = SubElement(layer_el, "{http://www.opengis.net/wmts/1.0}Style", {"isDefault": "true"})
         SubElement(style_el, "{http://www.opengis.net/ows/1.1}Identifier").text = "default"
-        SubElement(layer_el, "{http://www.opengis.net/wmts/1.0}Format").text = "image/png"
+        SubElement(layer_el, "{http://www.opengis.net/wmts/1.0}Format").text = layer.mime_type
         SubElement(
             layer_el,
             "{http://www.opengis.net/wmts/1.0}ResourceURL",
             {
-                "format": "image/png",
+                "format": layer.mime_type,
                 "resourceType": "tile",
                 "template": (
-                    f"{base_url}/wmts/{quote(layer.identifier, safe='')}/{WMTS_MATRIX_SET}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.png"
+                    f"{base_url}/wmts/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.{layer.file_extension}"
                     if set_id is None
-                    else f"{base_url}/api/wmts/sets/{quote(set_id, safe='')}/{quote(layer.identifier, safe='')}/{WMTS_MATRIX_SET}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.png"
+                    else f"{base_url}/api/wmts/sets/{quote(set_id, safe='')}/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.{layer.file_extension}"
                 ),
             },
         )
         link = SubElement(layer_el, "{http://www.opengis.net/wmts/1.0}TileMatrixSetLink")
-        SubElement(link, "{http://www.opengis.net/wmts/1.0}TileMatrixSet").text = WMTS_MATRIX_SET
+        SubElement(link, "{http://www.opengis.net/wmts/1.0}TileMatrixSet").text = layer.matrix_set_identifier
+        limits = SubElement(link, "{http://www.opengis.net/wmts/1.0}TileMatrixSetLimits")
+        for matrix in layer.tile_matrices:
+            _tile_matrix_limits_xml(limits, matrix)
 
-    matrix_set = SubElement(contents, "{http://www.opengis.net/wmts/1.0}TileMatrixSet")
-    SubElement(matrix_set, "{http://www.opengis.net/ows/1.1}Identifier").text = WMTS_MATRIX_SET
-    SubElement(matrix_set, "{http://www.opengis.net/ows/1.1}SupportedCRS").text = "urn:ogc:def:crs:EPSG::4326"
+    for layer in list_wmts_layers(set_id):
+        matrix_set = SubElement(contents, "{http://www.opengis.net/wmts/1.0}TileMatrixSet")
+        SubElement(matrix_set, "{http://www.opengis.net/ows/1.1}Identifier").text = layer.matrix_set_identifier
+        SubElement(matrix_set, "{http://www.opengis.net/ows/1.1}SupportedCRS").text = layer.spatial_ref.supported_crs
+        matrix_set_bbox = SubElement(matrix_set, "{http://www.opengis.net/ows/1.1}BoundingBox", {"crs": layer.spatial_ref.supported_crs})
+        SubElement(matrix_set_bbox, "{http://www.opengis.net/ows/1.1}LowerCorner").text = (
+            f"{layer.matrix_set_bounds[0]} {layer.matrix_set_bounds[1]}"
+        )
+        SubElement(matrix_set_bbox, "{http://www.opengis.net/ows/1.1}UpperCorner").text = (
+            f"{layer.matrix_set_bounds[2]} {layer.matrix_set_bounds[3]}"
+        )
 
-    for zoom in range(0, 23):
-        resolution = INITIAL_RESOLUTION / (2**zoom)
-        matrix_width, matrix_height = _matrix_dimensions(zoom)
-        tile_matrix = SubElement(matrix_set, "{http://www.opengis.net/wmts/1.0}TileMatrix")
-        SubElement(tile_matrix, "{http://www.opengis.net/ows/1.1}Identifier").text = str(zoom)
-        SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}ScaleDenominator").text = str(resolution / OGC_PIXEL_SIZE)
-        SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}TopLeftCorner").text = f"{WORLD_MIN_X} {WORLD_MAX_Y}"
-        SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}TileWidth").text = str(WMTS_TILE_SIZE)
-        SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}TileHeight").text = str(WMTS_TILE_SIZE)
-        SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}MatrixWidth").text = str(matrix_width)
-        SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}MatrixHeight").text = str(matrix_height)
+        for matrix in layer.tile_matrices:
+            tile_matrix = SubElement(matrix_set, "{http://www.opengis.net/wmts/1.0}TileMatrix")
+            SubElement(tile_matrix, "{http://www.opengis.net/ows/1.1}Identifier").text = str(matrix.zoom_level)
+            SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}ScaleDenominator").text = str(matrix.scale_denominator)
+            SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}TopLeftCorner").text = (
+                f"{layer.matrix_set_bounds[0]} {layer.matrix_set_bounds[3]}"
+            )
+            SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}TileWidth").text = str(matrix.tile_width)
+            SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}TileHeight").text = str(matrix.tile_height)
+            SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}MatrixWidth").text = str(matrix.matrix_width)
+            SubElement(tile_matrix, "{http://www.opengis.net/wmts/1.0}MatrixHeight").text = str(matrix.matrix_height)
 
     return tostring(capabilities, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
@@ -325,16 +697,49 @@ def list_wmts_payload(base_url: str, set_id: str | None = None) -> dict:
                 "path": layer.relative_path,
                 "provider": "wmts",
                 "tile_url": (
-                    f"/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT=image/png&TILEMATRIXSET={WMTS_MATRIX_SET}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
+                    f"/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT={quote(layer.mime_type, safe='')}&TILEMATRIXSET={quote(layer.matrix_set_identifier, safe='')}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
                     if set_id is None
-                    else f"/api/wmts/sets/{quote(set_id, safe='')}?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT=image/png&TILEMATRIXSET={WMTS_MATRIX_SET}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
+                    else f"/api/wmts/sets/{quote(set_id, safe='')}?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT={quote(layer.mime_type, safe='')}&TILEMATRIXSET={quote(layer.matrix_set_identifier, safe='')}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
                 ),
-                "rest_tile_url": f"{rest_base}/{quote(layer.identifier, safe='')}/{WMTS_MATRIX_SET}/{{z}}/{{y}}/{{x}}.png",
+                "rest_tile_url": f"{rest_base}/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{z}}/{{y}}/{{x}}.{layer.file_extension}",
                 "capabilities_url": capabilities_url,
                 "demo_url": "/demo",
                 "source_modes": ["kvp", "rest"],
+                "format": layer.mime_type,
+                "min_zoom": layer.min_zoom,
+                "max_zoom": layer.max_zoom,
+                "matrix_set": layer.matrix_set_identifier,
+                "crs": layer.spatial_ref.supported_crs,
+                "tile_matrix_set": {
+                    "identifier": layer.matrix_set_identifier,
+                    "supported_crs": layer.spatial_ref.supported_crs,
+                    "bounds": layer.matrix_set_bounds,
+                    "top_left_corner": [layer.matrix_set_bounds[0], layer.matrix_set_bounds[3]],
+                },
+                "tile_matrices": [
+                    {
+                        "identifier": str(matrix.zoom_level),
+                        "zoom": matrix.zoom_level,
+                        "matrix_width": matrix.matrix_width,
+                        "matrix_height": matrix.matrix_height,
+                        "tile_width": matrix.tile_width,
+                        "tile_height": matrix.tile_height,
+                        "pixel_x_size": matrix.pixel_x_size,
+                        "pixel_y_size": matrix.pixel_y_size,
+                        "scale_denominator": matrix.scale_denominator,
+                        "min_tile_col": matrix.min_tile_col,
+                        "max_tile_col": matrix.max_tile_col,
+                        "min_tile_row": matrix.min_tile_row,
+                        "max_tile_row": matrix.max_tile_row,
+                    }
+                    for matrix in layer.tile_matrices
+                ],
                 "bounds": {
                     "epsg4326": layer.bounds_4326,
+                    "native": {
+                        "crs": layer.spatial_ref.supported_crs,
+                        "extent": layer.native_bounds,
+                    },
                 },
             }
             for layer in layers
@@ -353,8 +758,6 @@ def list_wmts_payload(base_url: str, set_id: str | None = None) -> dict:
             "capabilities_url": capabilities_url,
             "demo_url": "/demo",
             "kvp_url": "/wmts?" if set_id is None else f"/api/wmts/sets/{quote(set_id, safe='')}?",
-            "matrix_set": WMTS_MATRIX_SET,
-            "crs": WGS84,
             "base_url": base_url,
         },
     }

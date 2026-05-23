@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -7,8 +7,13 @@ RUN npm install
 
 COPY src ./src
 
-ENV PORT=5173
-ENV VITE_PROXY_TARGET=http://map-manager:4002
+RUN npm run build
+
+FROM nginx:1.27-alpine
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+
 EXPOSE 5173
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+CMD ["nginx", "-g", "daemon off;"]

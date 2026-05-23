@@ -9,6 +9,17 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parents[
 FRONTEND_DIST_DIR = Path(os.environ.get("FRONTEND_DIST_DIR", str(Path(__file__).resolve().parents[1] / "frontend-dist"))).resolve()
 SETS_MANIFEST_PATH = DATA_DIR / "sets.json"
 WMTS_TILE_SIZE = 256
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+
+
+def _parse_bool_env(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+GPKG_DEBUG_LOGGING = _parse_bool_env("GPKG_DEBUG_LOGGING", default=False)
 
 
 @dataclass(frozen=True)

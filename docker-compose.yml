@@ -4,6 +4,7 @@ services:
       context: ./map-manager
       dockerfile: Dockerfile
     container_name: gis-map-manager
+    image: map-manager:alpha
     environment:
       DATA_DIR: /app/data
       PORT: 4002
@@ -30,6 +31,7 @@ services:
       context: ./map-manager-ui
       dockerfile: Dockerfile
     container_name: gis-map-manager-ui
+    image: map-manager-ui:alpha
     environment:
       PORT: 5173
       VITE_PROXY_TARGET: http://map-manager:4002
@@ -47,6 +49,7 @@ services:
     environment:
       PORT: 8003
       DATA_DIR: /app/data
+      PUBLIC_BASE_URL: /map-provider-api
     depends_on:
       - map-manager
     ports:
@@ -59,6 +62,7 @@ services:
       context: ./hat-provider
       dockerfile: Dockerfile
     container_name: gis-hat-provider
+    image: hat-provider:alpha
     environment:
       PORT: 8004
       DATA_DIR: /app/data
@@ -73,11 +77,14 @@ services:
     build:
       context: ./example-client
       dockerfile: Dockerfile
+      args:
+        VITE_MAP_PROVIDER_BASE_URL: http://localhost:8003
+        VITE_HAT_PROVIDER_BASE_URL: http://localhost:8004
+        VITE_MAP_URL: http://localhost:8003/wmts?SERVICE=WMTS&REQUEST=GetCapabilities
     container_name: gis-example-client
+    image: example-client:alpha
     environment:
       PORT: 4174
-      MAP_PROVIDER_PROXY_TARGET: http://map-provider:8003
-      HAT_PROVIDER_PROXY_TARGET: http://hat-provider:8004
     depends_on:
       - map-provider
       - hat-provider

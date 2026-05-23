@@ -43,3 +43,5 @@ docker-compose.override.yml
 # Local temporary files
 tmp/
 temp/
+
+*.tar

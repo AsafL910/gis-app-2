@@ -1,4 +1,4 @@
-import type { HatSetPayload, LayersPayload, SetsPayload } from "./types";
+import type { HatSetPayload, LayerPayload, LayersPayload, SetsPayload } from "./types";
 
 const mapProviderBaseUrl = import.meta.env.VITE_MAP_PROVIDER_BASE_URL || "/map-provider-api";
 const hatProviderBaseUrl = import.meta.env.VITE_HAT_PROVIDER_BASE_URL || "/hat-provider-api";
@@ -25,26 +25,122 @@ function toProxyRelativeUrl(value: string): string {
   return value;
 }
 
+function textContent(parent: Element | null | undefined, localName: string): string {
+  return parent?.getElementsByTagNameNS("*", localName)[0]?.textContent?.trim() || "";
+}
+
+function parseCoordinatePair(value: string): [number, number] | undefined {
+  const parts = value.split(/\s+/).map(Number);
+  if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) {
+    return undefined;
+  }
+
+  return [parts[0], parts[1]];
+}
+
+function parseBoundingBox(box?: Element | null): [number, number, number, number] | undefined {
+  if (!box) {
+    return undefined;
+  }
+
+  const lower = parseCoordinatePair(textContent(box, "LowerCorner"));
+  const upper = parseCoordinatePair(textContent(box, "UpperCorner"));
+  if (!lower || !upper) {
+    return undefined;
+  }
+
+  return [lower[0], lower[1], upper[0], upper[1]];
+}
+
 function parseCapabilitiesXml(xmlText: string): LayersPayload {
   const parser = new DOMParser();
   const xml = parser.parseFromString(xmlText, "application/xml");
-  const layerElements = Array.from(xml.getElementsByTagNameNS("*", "Layer"));
-  const matrixSetElement = xml.getElementsByTagNameNS("*", "TileMatrixSet")[0];
-  const matrixSet =
-    matrixSetElement?.getElementsByTagNameNS("*", "Identifier")[0]?.textContent?.trim() || "EPSG4326";
+  const matrixSetElements = Array.from(xml.getElementsByTagNameNS("*", "TileMatrixSet"));
+  const matrixSets = new Map<
+    string,
+    {
+      identifier: string;
+      supported_crs: string;
+      bounds?: [number, number, number, number];
+      top_left_corner?: [number, number];
+      tile_matrices: NonNullable<LayerPayload["tile_matrices"]>;
+    }
+  >();
 
+  for (const matrixSetEl of matrixSetElements) {
+    const identifier = textContent(matrixSetEl, "Identifier");
+    if (!identifier) {
+      continue;
+    }
+
+    const tileMatrixElements = Array.from(matrixSetEl.getElementsByTagNameNS("*", "TileMatrix"));
+    const tileMatrices = tileMatrixElements
+      .map((tileMatrixEl) => {
+        const matrixIdentifier = textContent(tileMatrixEl, "Identifier");
+        const topLeftCorner = parseCoordinatePair(textContent(tileMatrixEl, "TopLeftCorner"));
+        const matrixWidth = Number(textContent(tileMatrixEl, "MatrixWidth"));
+        const matrixHeight = Number(textContent(tileMatrixEl, "MatrixHeight"));
+        const tileWidth = Number(textContent(tileMatrixEl, "TileWidth"));
+        const tileHeight = Number(textContent(tileMatrixEl, "TileHeight"));
+        const scaleDenominator = Number(textContent(tileMatrixEl, "ScaleDenominator"));
+        const resolution = Number.isFinite(scaleDenominator) ? scaleDenominator * 0.00028 : Number.NaN;
+
+        if (
+          !matrixIdentifier ||
+          !topLeftCorner ||
+          !Number.isFinite(matrixWidth) ||
+          !Number.isFinite(matrixHeight) ||
+          !Number.isFinite(tileWidth) ||
+          !Number.isFinite(tileHeight) ||
+          !Number.isFinite(resolution)
+        ) {
+          return null;
+        }
+
+        return {
+          identifier: matrixIdentifier,
+          zoom: Number(matrixIdentifier),
+          matrix_width: matrixWidth,
+          matrix_height: matrixHeight,
+          tile_width: tileWidth,
+          tile_height: tileHeight,
+          pixel_x_size: resolution,
+          pixel_y_size: resolution,
+          scale_denominator: scaleDenominator,
+          min_tile_col: 0,
+          max_tile_col: matrixWidth - 1,
+          min_tile_row: 0,
+          max_tile_row: matrixHeight - 1,
+          top_left_corner: topLeftCorner
+        };
+      })
+      .filter((matrix): matrix is NonNullable<typeof matrix> => Boolean(matrix));
+
+    matrixSets.set(identifier, {
+      identifier,
+      supported_crs: textContent(matrixSetEl, "SupportedCRS"),
+      bounds: parseBoundingBox(matrixSetEl.getElementsByTagNameNS("*", "BoundingBox")[0]),
+      top_left_corner: tileMatrices[0]?.top_left_corner,
+      tile_matrices: tileMatrices.map(({ top_left_corner: _ignored, ...matrix }) => matrix)
+    });
+  }
+
+  const layerElements = Array.from(xml.getElementsByTagNameNS("*", "Layer"));
   const layers = layerElements
     .map((layerEl) => {
-      const identifier = layerEl.getElementsByTagNameNS("*", "Identifier")[0]?.textContent?.trim() || "";
-      const name = layerEl.getElementsByTagNameNS("*", "Title")[0]?.textContent?.trim() || identifier;
+      const identifier = textContent(layerEl, "Identifier");
+      const name = textContent(layerEl, "Title") || identifier;
       const resource = layerEl.getElementsByTagNameNS("*", "ResourceURL")[0];
       const template = resource?.getAttribute("template") || "";
-      const lower = layerEl.getElementsByTagNameNS("*", "LowerCorner")[0]?.textContent?.trim() || "";
-      const upper = layerEl.getElementsByTagNameNS("*", "UpperCorner")[0]?.textContent?.trim() || "";
-      const [minX, minY] = lower.split(/\s+/).map(Number);
-      const [maxX, maxY] = upper.split(/\s+/).map(Number);
+      const format = resource?.getAttribute("format") || undefined;
+      const wgs84Bounds = parseBoundingBox(layerEl.getElementsByTagNameNS("*", "WGS84BoundingBox")[0]);
+      const nativeBox = layerEl.getElementsByTagNameNS("*", "BoundingBox")[0];
+      const nativeBounds = parseBoundingBox(nativeBox);
+      const nativeCrs = nativeBox?.getAttribute("crs") || "";
+      const matrixSetIdentifier = textContent(layerEl.getElementsByTagNameNS("*", "TileMatrixSetLink")[0], "TileMatrixSet");
+      const matrixSet = matrixSets.get(matrixSetIdentifier);
 
-      if (!identifier || !template) {
+      if (!identifier || !template || !matrixSet) {
         return null;
       }
 
@@ -61,12 +157,22 @@ function parseCapabilitiesXml(xmlText: string): LayersPayload {
         capabilities_url: "/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
         demo_url: "",
         source_modes: ["rest"],
-        bounds:
-          Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)
-            ? {
-                epsg4326: [minX, minY, maxX, maxY] as [number, number, number, number]
-              }
-            : {}
+        format,
+        min_zoom: matrixSet.tile_matrices[0]?.zoom,
+        max_zoom: matrixSet.tile_matrices[matrixSet.tile_matrices.length - 1]?.zoom,
+        matrix_set: matrixSet.identifier,
+        crs: matrixSet.supported_crs,
+        tile_matrix_set: {
+          identifier: matrixSet.identifier,
+          supported_crs: matrixSet.supported_crs,
+          bounds: matrixSet.bounds || [0, 0, 0, 0],
+          top_left_corner: matrixSet.top_left_corner || [0, 0]
+        },
+        tile_matrices: matrixSet.tile_matrices,
+        bounds: {
+          epsg4326: wgs84Bounds,
+          native: nativeBounds && nativeCrs ? { crs: nativeCrs, extent: nativeBounds } : undefined
+        }
       };
     })
     .filter((layer): layer is NonNullable<typeof layer> => Boolean(layer));
@@ -79,8 +185,6 @@ function parseCapabilitiesXml(xmlText: string): LayersPayload {
       capabilities_url: "/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
       demo_url: "",
       kvp_url: "/wmts?",
-      matrix_set: matrixSet,
-      crs: "EPSG:4326",
       base_url: ""
     }
   };

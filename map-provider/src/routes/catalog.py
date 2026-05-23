@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request
 
+from src.config import PUBLIC_BASE_URL
 from src.services.catalog import list_catalog_sets
 
 
@@ -7,6 +8,8 @@ router = APIRouter(prefix="/api", tags=["Catalog"])
 
 
 def _base_url(request: Request) -> str:
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
     return str(request.base_url).rstrip("/")
 
 
