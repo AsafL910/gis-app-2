@@ -13,18 +13,18 @@ services:
     volumes:
       - ./data:/app/data
 
-  # terrain-calculator:
-  #   build:
-  #     context: ./terrain-calculator
-  #     dockerfile: Dockerfile
-  #   container_name: gis-terrain-calculator
-  #   environment:
-  #     DATA_DIR: /app/data
-  #     PORT: 8000
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - ./data:/app/data
+  terrain-calculator:
+    build:
+      context: ./terrain-calculator
+      dockerfile: Dockerfile
+    container_name: gis-terrain-calculator
+    environment:
+      DATA_DIR: /app/data
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
 
   map-manager-ui:
     build:
@@ -49,9 +49,9 @@ services:
     environment:
       PORT: 8003
       DATA_DIR: /app/data
-      PUBLIC_BASE_URL: /map-provider-api
-    depends_on:
-      - map-manager
+      PUBLIC_BASE_URL: http://localhost:8003
+    # depends_on:
+    #   - map-manager
     ports:
       - "8003:8003"
     volumes:
@@ -66,8 +66,8 @@ services:
     environment:
       PORT: 8004
       DATA_DIR: /app/data
-    depends_on:
-      - map-manager
+    # depends_on:
+    #   - map-manager
     ports:
       - "8004:8004"
     volumes:

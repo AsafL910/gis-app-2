@@ -1,6 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
-import { listAvailableGpkgs } from "../services/available-gpkg-service.js";
+import {
+  deleteSharedGpkg,
+  getDownloadableSharedGpkg,
+  listAvailableGpkgs,
+  renameSharedGpkg,
+  storeSharedGpkg
+} from "../services/available-gpkg-service.js";
 import { createSet, getAllSets, removeSet, reorderDtmLayers } from "../services/set-service.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -67,6 +73,55 @@ function parseDtmSelectionOrder(
 setsRouter.get("/available-gpkgs", async (_request, response) => {
   const files = await listAvailableGpkgs();
   response.json({ files });
+});
+
+setsRouter.post("/available-gpkgs/upload", upload.single("gpkg"), async (request, response) => {
+  try {
+    if (!request.file) {
+      response.status(400).json({ error: "A .gpkg file is required." });
+      return;
+    }
+
+    const stored = await storeSharedGpkg(request.file);
+    response.status(201).json({ file: stored });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to upload shared GeoPackage.";
+    response.status(400).json({ error: message });
+  }
+});
+
+setsRouter.get("/available-gpkgs/download", async (request, response) => {
+  try {
+    const relativePath = typeof request.query.path === "string" ? request.query.path : "";
+    const file = await getDownloadableSharedGpkg(relativePath);
+    response.download(file.absolutePath, file.fileName);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to download shared GeoPackage.";
+    response.status(400).json({ error: message });
+  }
+});
+
+setsRouter.patch("/available-gpkgs", async (request, response) => {
+  try {
+    const relativePath = typeof request.body?.relativePath === "string" ? request.body.relativePath : "";
+    const nextFileName = typeof request.body?.nextFileName === "string" ? request.body.nextFileName : "";
+    const updated = await renameSharedGpkg(relativePath, nextFileName);
+    response.json({ file: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to rename shared GeoPackage.";
+    response.status(400).json({ error: message });
+  }
+});
+
+setsRouter.delete("/available-gpkgs", async (request, response) => {
+  try {
+    const relativePath = typeof request.query.path === "string" ? request.query.path : "";
+    await deleteSharedGpkg(relativePath);
+    response.status(204).send();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete shared GeoPackage.";
+    response.status(400).json({ error: message });
+  }
 });
 
 setsRouter.get("/", async (_request, response) => {

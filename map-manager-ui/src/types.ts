@@ -31,4 +31,5 @@ export interface AvailableGpkgFile {
   fileName: string;
   size: number;
   modifiedAt: string;
+  referencedBySets: string[];
 }

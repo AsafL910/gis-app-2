@@ -20,6 +20,57 @@ export async function fetchAvailableGpkgs(): Promise<AvailableGpkgFile[]> {
   return payload.files;
 }
 
+export async function uploadSharedGpkg(file: File): Promise<AvailableGpkgFile> {
+  const form = new FormData();
+  form.append("gpkg", file);
+
+  const response = await fetch("/api/sets/available-gpkgs/upload", {
+    method: "POST",
+    body: form
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json()) as { error?: string };
+    throw new Error(payload.error ?? "Unable to upload GeoPackage to the shared data folder.");
+  }
+
+  const payload = (await response.json()) as { file: AvailableGpkgFile };
+  return payload.file;
+}
+
+export async function renameSharedGpkg(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
+  const response = await fetch("/api/sets/available-gpkgs", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ relativePath, nextFileName })
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json()) as { error?: string };
+    throw new Error(payload.error ?? "Unable to rename shared GeoPackage.");
+  }
+
+  const payload = (await response.json()) as { file: AvailableGpkgFile };
+  return payload.file;
+}
+
+export async function deleteSharedGpkg(relativePath: string): Promise<void> {
+  const response = await fetch(`/api/sets/available-gpkgs?path=${encodeURIComponent(relativePath)}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json()) as { error?: string };
+    throw new Error(payload.error ?? "Unable to delete shared GeoPackage.");
+  }
+}
+
+export function getSharedGpkgDownloadUrl(relativePath: string): string {
+  return `/api/sets/available-gpkgs/download?path=${encodeURIComponent(relativePath)}`;
+}
+
 export async function createSet(input: {
   name: string;
   description: string;

@@ -7,6 +7,10 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Drawer,
   IconButton,
@@ -28,11 +32,23 @@ import LayersIcon from "@mui/icons-material/Layers";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
+import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
-import { createSet, deleteSet, fetchAvailableGpkgs, fetchSets, updateDtmOrder } from "./api";
+import {
+  createSet,
+  deleteSet,
+  deleteSharedGpkg,
+  fetchAvailableGpkgs,
+  fetchSets,
+  getSharedGpkgDownloadUrl,
+  renameSharedGpkg,
+  updateDtmOrder,
+  uploadSharedGpkg
+} from "./api";
 import type { AvailableGpkgFile, MapSetRecord } from "./types";
 
 const NAV_WIDTH = 280;
@@ -102,6 +118,11 @@ export function App() {
   const [maps, setMaps] = useState<DraftAsset[]>([]);
   const [dtms, setDtms] = useState<DraftAsset[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingShared, setIsUploadingShared] = useState(false);
+  const [isManagingShared, setIsManagingShared] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<AvailableGpkgFile | null>(null);
+  const [nextSharedFileName, setNextSharedFileName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<AvailableGpkgFile | null>(null);
   const [serverOrder, setServerOrder] = useState<Record<string, string[]>>({});
 
   const selectedSet = sets.find((item) => item.id === selectedSetId) ?? null;
@@ -260,6 +281,111 @@ export function App() {
     }
   }
 
+  async function handleSharedUpload(fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) {
+      return;
+    }
+
+    setIsUploadingShared(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const uploaded = await uploadSharedGpkg(file);
+      setAvailableFiles((current) =>
+        [...current.filter((item) => item.relativePath !== uploaded.relativePath), uploaded].sort((left, right) =>
+          left.relativePath.localeCompare(right.relativePath)
+        )
+      );
+      setSuccess(`Uploaded ${uploaded.fileName} to shared data.`);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Unable to upload shared GeoPackage.");
+    } finally {
+      setIsUploadingShared(false);
+    }
+  }
+
+  function openRenameDialog(file: AvailableGpkgFile) {
+    setRenameTarget(file);
+    setNextSharedFileName(file.fileName);
+  }
+
+  async function handleRenameSharedFile() {
+    if (!renameTarget) {
+      return;
+    }
+
+    setIsManagingShared(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const updated = await renameSharedGpkg(renameTarget.relativePath, nextSharedFileName);
+      setAvailableFiles((current) =>
+        current
+          .map((item) => (item.relativePath === renameTarget.relativePath ? updated : item))
+          .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+      );
+      setMaps((current) =>
+        current.map((item) =>
+          item.relativePath === renameTarget.relativePath
+            ? {
+                ...item,
+                key: `existing:${updated.relativePath}`,
+                label: updated.fileName,
+                size: updated.size,
+                relativePath: updated.relativePath
+              }
+            : item
+        )
+      );
+      setDtms((current) =>
+        current.map((item) =>
+          item.relativePath === renameTarget.relativePath
+            ? {
+                ...item,
+                key: `existing:${updated.relativePath}`,
+                label: updated.fileName,
+                size: updated.size,
+                relativePath: updated.relativePath
+              }
+            : item
+        )
+      );
+      setRenameTarget(null);
+      setNextSharedFileName("");
+      setSuccess(`Renamed shared GeoPackage to ${updated.fileName}.`);
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : "Unable to rename shared GeoPackage.");
+    } finally {
+      setIsManagingShared(false);
+    }
+  }
+
+  async function handleDeleteSharedFile() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    setIsManagingShared(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      await deleteSharedGpkg(deleteTarget.relativePath);
+      setAvailableFiles((current) => current.filter((item) => item.relativePath !== deleteTarget.relativePath));
+      setMaps((current) => current.filter((item) => item.relativePath !== deleteTarget.relativePath));
+      setDtms((current) => current.filter((item) => item.relativePath !== deleteTarget.relativePath));
+      setDeleteTarget(null);
+      setSuccess(`Deleted shared GeoPackage ${deleteTarget.fileName}.`);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete shared GeoPackage.");
+    } finally {
+      setIsManagingShared(false);
+    }
+  }
+
   const orderedLayers = selectedSet
     ? (serverOrder[selectedSet.id] ?? selectedSet.dtmLayers.map((layer) => layer.id))
         .map((id) => selectedSet.dtmLayers.find((layer) => layer.id === id))
@@ -398,9 +524,9 @@ export function App() {
 
               <Card sx={{ flex: 1 }}>
                 <CardContent>
-                  <Typography variant="h6">Create Map Set</Typography>
+                  <Typography variant="h6">Create Map Set and Build VRT</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Choose existing `.gpkg` files from `data/` or upload new ones. Keep DTMs highest-resolution first.
+                    This section creates a new map set. The two upload buttons below only add files to the new set draft.
                   </Typography>
 
                   <Box component="form" onSubmit={handleCreateSet}>
@@ -423,7 +549,7 @@ export function App() {
 
                       <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
                         <Button component="label" variant="outlined" startIcon={<CloudUploadOutlinedIcon />} fullWidth>
-                          Upload Maps
+                          Add Map Files to New Set
                           <input
                             hidden
                             type="file"
@@ -439,7 +565,7 @@ export function App() {
                           startIcon={<CloudUploadOutlinedIcon />}
                           fullWidth
                         >
-                          Upload DTM Layers
+                          Add DTM Layers to New Set
                           <input
                             hidden
                             type="file"
@@ -456,12 +582,41 @@ export function App() {
                             <FolderOutlinedIcon fontSize="small" />
                             <Box>
                               <Typography variant="subtitle1" fontWeight={700}>
-                                Available GeoPackages in `data/`
+                                Shared GeoPackage Library
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
-                                Reuse shared `.gpkg` files without leaving the dashboard.
+                                Upload here to place a `.gpkg` directly into `data/` for the provider. No map set or VRT creation is required.
                               </Typography>
                             </Box>
+                          </Stack>
+
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.5}
+                            justifyContent="space-between"
+                            alignItems={{ xs: "stretch", sm: "center" }}
+                            sx={{ mb: 2 }}
+                          >
+                            <Typography variant="body2" color="text.secondary">
+                              Files uploaded here become reusable provider inputs immediately and can also be picked into a new set later.
+                            </Typography>
+                            <Button
+                              component="label"
+                              variant="contained"
+                              startIcon={<CloudUploadOutlinedIcon />}
+                              disabled={isUploadingShared || isManagingShared}
+                            >
+                              Upload to Shared `data/`
+                              <input
+                                hidden
+                                type="file"
+                                accept=".gpkg"
+                                onChange={(event) => {
+                                  void handleSharedUpload(event.target.files);
+                                  event.target.value = "";
+                                }}
+                              />
+                            </Button>
                           </Stack>
 
                           <Table size="small">
@@ -469,8 +624,10 @@ export function App() {
                               <TableRow>
                                 <TableCell>File</TableCell>
                                 <TableCell>Path</TableCell>
+                                <TableCell>Used By</TableCell>
                                 <TableCell>Size</TableCell>
-                                <TableCell align="right">Use</TableCell>
+                                <TableCell align="right">Manage</TableCell>
+                                <TableCell align="right">Use in New Set</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
@@ -484,7 +641,50 @@ export function App() {
                                     <TableCell>
                                       <Typography variant="caption">{file.relativePath}</Typography>
                                     </TableCell>
+                                    <TableCell>
+                                      {file.referencedBySets.length ? (
+                                        <Tooltip title={file.referencedBySets.join(", ")}>
+                                          <Chip size="small" label={`${file.referencedBySets.length} set(s)`} />
+                                        </Tooltip>
+                                      ) : (
+                                        <Typography variant="caption" color="text.secondary">
+                                          Not used
+                                        </Typography>
+                                      )}
+                                    </TableCell>
                                     <TableCell>{formatFileSize(file.size)}</TableCell>
+                                    <TableCell align="right">
+                                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                        <Button
+                                          size="small"
+                                          variant="text"
+                                          startIcon={<DownloadOutlinedIcon />}
+                                          component="a"
+                                          href={getSharedGpkgDownloadUrl(file.relativePath)}
+                                        >
+                                          Download
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="text"
+                                          startIcon={<DriveFileRenameOutlineIcon />}
+                                          onClick={() => openRenameDialog(file)}
+                                          disabled={isManagingShared}
+                                        >
+                                          Rename
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="text"
+                                          color="error"
+                                          startIcon={<DeleteOutlineIcon />}
+                                          onClick={() => setDeleteTarget(file)}
+                                          disabled={isManagingShared}
+                                        >
+                                          Delete
+                                        </Button>
+                                      </Stack>
+                                    </TableCell>
                                     <TableCell align="right">
                                       <Stack direction="row" spacing={1} justifyContent="flex-end">
                                         <Button
@@ -513,7 +713,7 @@ export function App() {
                               })}
                               {!availableFiles.length ? (
                                 <TableRow>
-                                  <TableCell colSpan={4}>
+                                  <TableCell colSpan={6}>
                                     <Typography color="text.secondary">
                                       No reusable `.gpkg` files were found in the shared data folder.
                                     </Typography>
@@ -718,6 +918,70 @@ export function App() {
           </Stack>
         </Box>
       </Box>
+      <Dialog
+        open={Boolean(renameTarget)}
+        onClose={() => {
+          if (!isManagingShared) {
+            setRenameTarget(null);
+          }
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Rename Shared GeoPackage</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Renaming updates any existing map-set references that point to this shared file.
+            </Typography>
+            <TextField
+              label="File Name"
+              value={nextSharedFileName}
+              onChange={(event) => setNextSharedFileName(event.target.value)}
+              fullWidth
+              autoFocus
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameTarget(null)} disabled={isManagingShared}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => void handleRenameSharedFile()}
+            variant="contained"
+            disabled={isManagingShared || !nextSharedFileName.trim()}
+          >
+            Save Name
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          if (!isManagingShared) {
+            setDeleteTarget(null);
+          }
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Delete Shared GeoPackage</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Delete {deleteTarget?.fileName}? If this file is already used by a map set, deletion will be blocked until
+            those references are removed first.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)} disabled={isManagingShared}>
+            Cancel
+          </Button>
+          <Button onClick={() => void handleDeleteSharedFile()} color="error" variant="contained" disabled={isManagingShared}>
+            Delete File
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
