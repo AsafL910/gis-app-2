@@ -39,6 +39,7 @@ export interface AvailableGpkgFile {
   size: number;
   modifiedAt: string;
   referencedBySets: string[];
+  managedBySet: boolean;
 }
 
 export interface GdalInfoBand {

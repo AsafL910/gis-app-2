@@ -78,9 +78,9 @@ services:
       context: ./example-client
       dockerfile: Dockerfile
       args:
-        VITE_MAP_PROVIDER_BASE_URL: http://localhost:8003
-        VITE_HAT_PROVIDER_BASE_URL: http://localhost:8004
-        VITE_MAP_URL: http://localhost:8003/wmts?SERVICE=WMTS&REQUEST=GetCapabilities
+        VITE_MAP_PROVIDER_BASE_URL: /map-provider-api
+        VITE_HAT_PROVIDER_BASE_URL: /hat-provider-api
+        VITE_MAP_URL: /map-provider-api/wmts?SERVICE=WMTS&REQUEST=GetCapabilities
     container_name: gis-example-client
     image: example-client:alpha
     environment:

@@ -46,3 +46,4 @@ temp/
 
 *.tar
 ./data/**/*
+*.gpkg

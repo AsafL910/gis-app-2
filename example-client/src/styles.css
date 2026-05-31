@@ -236,6 +236,25 @@ h2 {
   font-weight: 600;
 }
 
+.debugReadout {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 6;
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(6, 11, 15, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f3f1e7;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;

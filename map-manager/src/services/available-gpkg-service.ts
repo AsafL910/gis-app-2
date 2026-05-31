@@ -26,10 +26,6 @@ async function walkForGpkgs(directoryPath: string, files: AvailableGpkgFile[]): 
     const absolutePath = path.join(directoryPath, entry.name);
 
     if (entry.isDirectory()) {
-      if (isWithin(config.setsRoot, absolutePath)) {
-        continue;
-      }
-
       await walkForGpkgs(absolutePath, files);
       continue;
     }
@@ -45,7 +41,8 @@ async function walkForGpkgs(directoryPath: string, files: AvailableGpkgFile[]): 
       fileName: path.basename(absolutePath),
       size: toFileSize(stats.size),
       modifiedAt: stats.mtime.toISOString(),
-      referencedBySets: []
+      referencedBySets: [],
+      managedBySet: isWithin(config.setsRoot, absolutePath)
     });
   }
 }
@@ -71,7 +68,8 @@ function toAvailableFile(
     fileName: path.basename(absolutePath),
     size: toFileSize(stats.size),
     modifiedAt: stats.mtime.toISOString(),
-    referencedBySets
+    referencedBySets,
+    managedBySet: isWithin(config.setsRoot, absolutePath)
   };
 }
 
@@ -85,10 +83,6 @@ async function getSharedFileInfo(relativePath: string): Promise<{
 
   if (!isWithin(config.sharedDataRoot, candidatePath)) {
     throw new Error("Selected file must stay inside the shared data folder.");
-  }
-
-  if (isWithin(config.setsRoot, candidatePath)) {
-    throw new Error("Files inside data/sets are managed assets and cannot be picked directly.");
   }
 
   if (path.extname(candidatePath).toLowerCase() !== ".gpkg") {

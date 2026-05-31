@@ -1,22 +1,52 @@
 import type { AvailableGpkgFile, MapSetRecord } from "./types";
 
-export async function fetchSets(): Promise<MapSetRecord[]> {
-  const response = await fetch("/api/sets");
+async function readJsonOrThrow<T>(response: Response, fallbackMessage: string): Promise<T> {
+  const contentType = response.headers.get("content-type") || "";
+  const rawBody = await response.text();
+
   if (!response.ok) {
-    throw new Error("Unable to load map sets.");
+    if (contentType.includes("application/json")) {
+      try {
+        const payload = JSON.parse(rawBody) as { error?: string };
+        throw new Error(payload.error ?? fallbackMessage);
+      } catch (error) {
+        if (error instanceof Error && error.message !== "Unexpected end of JSON input") {
+          throw error;
+        }
+      }
+    }
+
+    if (response.status === 413) {
+      throw new Error("Upload is too large for the web UI proxy. The request exceeded the Nginx body size limit.");
+    }
+
+    const compactBody = rawBody.replace(/\s+/g, " ").trim();
+    throw new Error(compactBody || fallbackMessage);
   }
 
-  const payload = (await response.json()) as { sets: MapSetRecord[] };
+  if (!rawBody) {
+    throw new Error(fallbackMessage);
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new Error(`Expected JSON response but received ${contentType || "unknown content type"}.`);
+  }
+}
+
+export async function fetchSets(): Promise<MapSetRecord[]> {
+  const response = await fetch("/api/sets");
+  const payload = await readJsonOrThrow<{ sets: MapSetRecord[] }>(response, "Unable to load map sets.");
   return payload.sets;
 }
 
 export async function fetchAvailableGpkgs(): Promise<AvailableGpkgFile[]> {
   const response = await fetch("/api/sets/available-gpkgs");
-  if (!response.ok) {
-    throw new Error("Unable to load available GeoPackages.");
-  }
-
-  const payload = (await response.json()) as { files: AvailableGpkgFile[] };
+  const payload = await readJsonOrThrow<{ files: AvailableGpkgFile[] }>(
+    response,
+    "Unable to load available GeoPackages.",
+  );
   return payload.files;
 }
 
@@ -26,15 +56,13 @@ export async function uploadSharedGpkg(file: File): Promise<AvailableGpkgFile> {
 
   const response = await fetch("/api/sets/available-gpkgs/upload", {
     method: "POST",
-    body: form
+    body: form,
   });
 
-  if (!response.ok) {
-    const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Unable to upload GeoPackage to the shared data folder.");
-  }
-
-  const payload = (await response.json()) as { file: AvailableGpkgFile };
+  const payload = await readJsonOrThrow<{ file: AvailableGpkgFile }>(
+    response,
+    "Unable to upload GeoPackage to the shared data folder.",
+  );
   return payload.file;
 }
 
@@ -42,28 +70,22 @@ export async function renameSharedGpkg(relativePath: string, nextFileName: strin
   const response = await fetch("/api/sets/available-gpkgs", {
     method: "PATCH",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ relativePath, nextFileName })
+    body: JSON.stringify({ relativePath, nextFileName }),
   });
 
-  if (!response.ok) {
-    const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Unable to rename shared GeoPackage.");
-  }
-
-  const payload = (await response.json()) as { file: AvailableGpkgFile };
+  const payload = await readJsonOrThrow<{ file: AvailableGpkgFile }>(response, "Unable to rename shared GeoPackage.");
   return payload.file;
 }
 
 export async function deleteSharedGpkg(relativePath: string): Promise<void> {
   const response = await fetch(`/api/sets/available-gpkgs?path=${encodeURIComponent(relativePath)}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 
   if (!response.ok) {
-    const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Unable to delete shared GeoPackage.");
+    await readJsonOrThrow(response, "Unable to delete shared GeoPackage.");
   }
 }
 
@@ -91,40 +113,55 @@ export async function createSet(input: {
 
   const response = await fetch("/api/sets", {
     method: "POST",
-    body: form
+    body: form,
   });
 
-  if (!response.ok) {
-    const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Unable to create map set.");
-  }
+  return readJsonOrThrow<MapSetRecord>(response, "Unable to create map set.");
+}
 
-  return (await response.json()) as MapSetRecord;
+export async function addAssetsToSet(
+  setId: string,
+  input: {
+    maps: File[];
+    dtms: File[];
+    selectedMapPaths: string[];
+    selectedDtmPaths: string[];
+    dtmSelectionOrder: Array<{ source: "upload" | "existing"; relativePath?: string }>;
+  }
+): Promise<MapSetRecord> {
+  const form = new FormData();
+  input.maps.forEach((file) => form.append("maps", file));
+  input.dtms.forEach((file) => form.append("dtms", file));
+  form.append("selectedMapPaths", JSON.stringify(input.selectedMapPaths));
+  form.append("selectedDtmPaths", JSON.stringify(input.selectedDtmPaths));
+  form.append("dtmSelectionOrder", JSON.stringify(input.dtmSelectionOrder));
+
+  const response = await fetch(`/api/sets/${setId}/assets`, {
+    method: "POST",
+    body: form,
+  });
+
+  return readJsonOrThrow<MapSetRecord>(response, "Unable to add assets to the selected map set.");
 }
 
 export async function updateDtmOrder(setId: string, dtmIds: string[]): Promise<MapSetRecord> {
   const response = await fetch(`/api/sets/${setId}/dtm-order`, {
     method: "PUT",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ dtmIds })
+    body: JSON.stringify({ dtmIds }),
   });
 
-  if (!response.ok) {
-    const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Unable to update DTM order.");
-  }
-
-  return (await response.json()) as MapSetRecord;
+  return readJsonOrThrow<MapSetRecord>(response, "Unable to update DTM order.");
 }
 
 export async function deleteSet(setId: string): Promise<void> {
   const response = await fetch(`/api/sets/${setId}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 
   if (!response.ok) {
-    throw new Error("Unable to delete map set.");
+    await readJsonOrThrow(response, "Unable to delete map set.");
   }
 }

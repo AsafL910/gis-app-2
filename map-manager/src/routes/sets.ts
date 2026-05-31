@@ -7,7 +7,7 @@ import {
   renameSharedGpkg,
   storeSharedGpkg
 } from "../services/available-gpkg-service.js";
-import { createSet, getAllSets, removeSet, reorderDtmLayers } from "../services/set-service.js";
+import { appendAssetsToSet, createSet, getAllSets, removeSet, reorderDtmLayers } from "../services/set-service.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
 export const setsRouter = Router();
@@ -68,6 +68,10 @@ function parseDtmSelectionOrder(
   } catch {
     return [];
   }
+}
+
+function readRouteId(value: string | string[] | undefined): string {
+  return typeof value === "string" ? value : "";
 }
 
 setsRouter.get("/available-gpkgs", async (_request, response) => {
@@ -159,6 +163,34 @@ setsRouter.post(
   }
 );
 
+setsRouter.post(
+  "/:id/assets",
+  upload.fields([
+    { name: "maps", maxCount: 100 },
+    { name: "dtms", maxCount: 100 }
+  ]),
+  async (request, response) => {
+    try {
+      const files = request.files as Record<string, Express.Multer.File[]> | undefined;
+      const maps = files?.maps ?? [];
+      const dtms = files?.dtms ?? [];
+
+      const updated = await appendAssetsToSet(readRouteId(request.params.id), {
+        maps,
+        dtms,
+        selectedMapPaths: parseStringArray(request.body.selectedMapPaths),
+        selectedDtmPaths: parseStringArray(request.body.selectedDtmPaths),
+        dtmSelectionOrder: parseDtmSelectionOrder(request.body.dtmSelectionOrder)
+      });
+
+      response.json(updated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add assets to map set.";
+      response.status(400).json({ error: message });
+    }
+  }
+);
+
 setsRouter.put("/:id/dtm-order", async (request, response) => {
   try {
     const dtmIds = Array.isArray(request.body?.dtmIds) ? request.body.dtmIds : null;
@@ -168,7 +200,7 @@ setsRouter.put("/:id/dtm-order", async (request, response) => {
       return;
     }
 
-    const updated = await reorderDtmLayers(request.params.id, dtmIds);
+    const updated = await reorderDtmLayers(readRouteId(request.params.id), dtmIds);
     response.json(updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to reorder DTM layers.";
@@ -177,7 +209,7 @@ setsRouter.put("/:id/dtm-order", async (request, response) => {
 });
 
 setsRouter.delete("/:id", async (request, response) => {
-  const deleted = await removeSet(request.params.id);
+  const deleted = await removeSet(readRouteId(request.params.id));
 
   if (!deleted) {
     response.status(404).json({ error: "Map set not found." });

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import { createId } from "../utils/id.js";
-import { resolveSharedGpkg } from "./available-gpkg-service.js";
+import { resolveSharedGpkg, storeSharedGpkg } from "./available-gpkg-service.js";
 import { deleteSetRecord, getSetFolder, getSetOrThrow, listSets, saveSet } from "./manifest-store.js";
 import { generateDtmVrt } from "./vrt-builder.js";
 import type { DtmLayer, MapSetRecord, StoredAsset, StoredAssetKind } from "../types.js";
@@ -19,27 +19,58 @@ interface DtmSelectionOrderItem {
   relativePath?: string;
 }
 
+function buildOrderedDtms(params: {
+  uploadedDtms: StoredAsset[];
+  copiedDtms: StoredAsset[];
+  selectedDtmPaths?: string[];
+  dtmSelectionOrder?: DtmSelectionOrderItem[];
+}): StoredAsset[] {
+  const selectedDtmPaths = params.selectedDtmPaths ?? [];
+  const copiedByRelativePath = new Map(selectedDtmPaths.map((filePath, index) => [filePath, params.copiedDtms[index]]));
+  const uploadQueue = [...params.uploadedDtms];
+
+  return params.dtmSelectionOrder && params.dtmSelectionOrder.length
+    ? params.dtmSelectionOrder.map((item) => {
+        if (item.source === "upload") {
+          const nextUpload = uploadQueue.shift();
+          if (!nextUpload) {
+            throw new Error("DTM selection order referenced more uploads than were provided.");
+          }
+          return nextUpload;
+        }
+
+        if (!item.relativePath) {
+          throw new Error("DTM selection order is missing a selected shared file path.");
+        }
+
+        const selectedFile = copiedByRelativePath.get(item.relativePath);
+        if (!selectedFile) {
+          throw new Error(`Selected DTM "${item.relativePath}" was not provided.`);
+        }
+
+        return selectedFile;
+      })
+    : [...params.uploadedDtms, ...params.copiedDtms];
+}
+
+function hasAssetWithRelativePath(assets: StoredAsset[], relativePath: string): boolean {
+  return assets.some((asset) => asset.relativePath === relativePath);
+}
+
 async function storeUploadedFile(
-  setId: string,
   kind: StoredAssetKind,
   file: UploadedFileShape
 ): Promise<StoredAsset> {
   const assetId = createId(kind);
-  const sourceExtension = path.extname(file.originalname) || ".gpkg";
-  const storedName = `${assetId}${sourceExtension}`;
-  const relativePath = path.join("sets", setId, kind, storedName);
-  const absolutePath = path.join(config.sharedDataRoot, relativePath);
-
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, file.buffer);
+  const storedFile = await storeSharedGpkg(file);
 
   return {
     id: assetId,
     kind,
     originalName: file.originalname,
-    storedName,
-    relativePath,
-    absolutePath,
+    storedName: storedFile.fileName,
+    relativePath: storedFile.relativePath,
+    absolutePath: storedFile.absolutePath,
     mimeType: file.mimetype || "application/geopackage+sqlite3",
     size: file.size,
     createdAt: new Date().toISOString()
@@ -97,39 +128,20 @@ export async function createSet(params: {
 
   const setId = createId("set");
   const storedMaps = [
-    ...(await Promise.all(params.maps.map((file) => storeUploadedFile(setId, "map", file)))),
+    ...(await Promise.all(params.maps.map((file) => storeUploadedFile("map", file)))),
     ...(await Promise.all(
       (params.selectedMapPaths ?? []).map((filePath) => linkSharedFileIntoSet(setId, "map", filePath))
     ))
   ];
-  const uploadedDtms = await Promise.all(params.dtms.map((file) => storeUploadedFile(setId, "dtm", file)));
+  const uploadedDtms = await Promise.all(params.dtms.map((file) => storeUploadedFile("dtm", file)));
   const selectedDtmPaths = params.selectedDtmPaths ?? [];
   const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => linkSharedFileIntoSet(setId, "dtm", filePath)));
-  const copiedByRelativePath = new Map(selectedDtmPaths.map((filePath, index) => [filePath, copiedDtms[index]]));
-  const uploadQueue = [...uploadedDtms];
-  const storedDtms =
-    params.dtmSelectionOrder && params.dtmSelectionOrder.length
-      ? params.dtmSelectionOrder.map((item) => {
-          if (item.source === "upload") {
-            const nextUpload = uploadQueue.shift();
-            if (!nextUpload) {
-              throw new Error("DTM selection order referenced more uploads than were provided.");
-            }
-            return nextUpload;
-          }
-
-          if (!item.relativePath) {
-            throw new Error("DTM selection order is missing a selected shared file path.");
-          }
-
-          const selectedFile = copiedByRelativePath.get(item.relativePath);
-          if (!selectedFile) {
-            throw new Error(`Selected DTM "${item.relativePath}" was not provided.`);
-          }
-
-          return selectedFile;
-        })
-      : [...uploadedDtms, ...copiedDtms];
+  const storedDtms = buildOrderedDtms({
+    uploadedDtms,
+    copiedDtms,
+    selectedDtmPaths,
+    dtmSelectionOrder: params.dtmSelectionOrder
+  });
   const dtmLayers = toDtmLayers(storedDtms);
   const vrtPath = path.join(getSetFolder(setId), `${setId}.vrt`);
   const now = new Date().toISOString();
@@ -148,6 +160,66 @@ export async function createSet(params: {
   };
 
   return saveSet(mapSet);
+}
+
+export async function appendAssetsToSet(
+  setId: string,
+  params: {
+    maps: UploadedFileShape[];
+    dtms: UploadedFileShape[];
+    selectedMapPaths?: string[];
+    selectedDtmPaths?: string[];
+    dtmSelectionOrder?: DtmSelectionOrderItem[];
+  }
+): Promise<MapSetRecord> {
+  const mapSet = await getSetOrThrow(setId);
+
+  if (
+    params.maps.length === 0 &&
+    params.dtms.length === 0 &&
+    (params.selectedMapPaths?.length ?? 0) === 0 &&
+    (params.selectedDtmPaths?.length ?? 0) === 0
+  ) {
+    throw new Error("Choose at least one map or DTM file to add.");
+  }
+
+  const selectedMapPaths = params.selectedMapPaths ?? [];
+  const selectedDtmPaths = params.selectedDtmPaths ?? [];
+
+  for (const relativePath of selectedMapPaths) {
+    if (hasAssetWithRelativePath(mapSet.maps, relativePath)) {
+      throw new Error(`Map "${relativePath}" is already part of set "${mapSet.name}".`);
+    }
+  }
+
+  for (const relativePath of selectedDtmPaths) {
+    if (hasAssetWithRelativePath(mapSet.dtmLayers, relativePath)) {
+      throw new Error(`DTM "${relativePath}" is already part of set "${mapSet.name}".`);
+    }
+  }
+
+  const storedMaps = [
+    ...(await Promise.all(params.maps.map((file) => storeUploadedFile("map", file)))),
+    ...(await Promise.all(selectedMapPaths.map((filePath) => linkSharedFileIntoSet(setId, "map", filePath))))
+  ];
+  const uploadedDtms = await Promise.all(params.dtms.map((file) => storeUploadedFile("dtm", file)));
+  const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => linkSharedFileIntoSet(setId, "dtm", filePath)));
+  const storedDtms = buildOrderedDtms({
+    uploadedDtms,
+    copiedDtms,
+    selectedDtmPaths,
+    dtmSelectionOrder: params.dtmSelectionOrder
+  });
+
+  const updatedSet: MapSetRecord = {
+    ...mapSet,
+    maps: [...mapSet.maps, ...storedMaps],
+    dtmLayers: toDtmLayers([...mapSet.dtmLayers, ...storedDtms]),
+    updatedAt: new Date().toISOString()
+  };
+
+  await generateDtmVrt(updatedSet.vrtPath, updatedSet.dtmLayers);
+  return saveSet(updatedSet);
 }
 
 export async function reorderDtmLayers(setId: string, orderedDtmIds: string[]): Promise<MapSetRecord> {
