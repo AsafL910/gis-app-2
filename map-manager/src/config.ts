@@ -10,6 +10,7 @@ export const config = {
   port: Number(process.env.PORT ?? 4002),
   workspaceRoot,
   sharedDataRoot,
+  sharedDtmRoot: path.join(sharedDataRoot, "dtms"),
   setsManifestPath: path.join(sharedDataRoot, "sets.json"),
   setsRoot: path.join(sharedDataRoot, "sets")
 };

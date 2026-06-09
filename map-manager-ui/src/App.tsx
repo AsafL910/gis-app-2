@@ -14,6 +14,7 @@ import {
   Divider,
   Drawer,
   IconButton,
+  MenuItem,
   List,
   ListItem,
   ListItemText,
@@ -43,12 +44,17 @@ import {
   addAssetsToSet,
   createSet,
   deleteSet,
+  deleteSharedDtm,
   deleteSharedGpkg,
+  fetchAvailableDtms,
   fetchAvailableGpkgs,
   fetchSets,
+  getSharedDtmDownloadUrl,
   getSharedGpkgDownloadUrl,
+  renameSharedDtm,
   renameSharedGpkg,
   updateDtmOrder,
+  uploadSharedDtm,
   uploadSharedGpkg
 } from "./api";
 import type { AvailableGpkgFile, MapSetRecord } from "./types";
@@ -110,7 +116,8 @@ function toExistingDraft(file: AvailableGpkgFile): DraftAsset {
 
 export function App() {
   const [sets, setSets] = useState<MapSetRecord[]>([]);
-  const [availableFiles, setAvailableFiles] = useState<AvailableGpkgFile[]>([]);
+  const [availableMapFiles, setAvailableMapFiles] = useState<AvailableGpkgFile[]>([]);
+  const [availableDtmFiles, setAvailableDtmFiles] = useState<AvailableGpkgFile[]>([]);
   const [selectedSetId, setSelectedSetId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -122,9 +129,9 @@ export function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingShared, setIsUploadingShared] = useState(false);
   const [isManagingShared, setIsManagingShared] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<AvailableGpkgFile | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ kind: "map" | "dtm"; file: AvailableGpkgFile } | null>(null);
   const [nextSharedFileName, setNextSharedFileName] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<AvailableGpkgFile | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: "map" | "dtm"; file: AvailableGpkgFile } | null>(null);
   const [serverOrder, setServerOrder] = useState<Record<string, string[]>>({});
 
   const selectedSet = sets.find((item) => item.id === selectedSetId) ?? null;
@@ -133,15 +140,30 @@ export function App() {
     void loadDashboard();
   }, []);
 
-  async function loadDashboard() {
+  async function loadDashboard(preferredSelectedSetId?: string) {
     setIsLoading(true);
     setError("");
 
     try {
-      const [nextSets, nextFiles] = await Promise.all([fetchSets(), fetchAvailableGpkgs()]);
+      const [nextSets, nextMapFiles, nextDtmFiles] = await Promise.all([
+        fetchSets(),
+        fetchAvailableGpkgs(),
+        fetchAvailableDtms()
+      ]);
       setSets(nextSets);
-      setAvailableFiles(nextFiles);
-      setSelectedSetId((current) => current || nextSets[0]?.id || "");
+      setAvailableMapFiles(nextMapFiles);
+      setAvailableDtmFiles(nextDtmFiles);
+      setSelectedSetId((current) => {
+        if (preferredSelectedSetId && nextSets.some((item) => item.id === preferredSelectedSetId)) {
+          return preferredSelectedSetId;
+        }
+
+        if (current && nextSets.some((item) => item.id === current)) {
+          return current;
+        }
+
+        return nextSets[0]?.id || "";
+      });
       setServerOrder(
         Object.fromEntries(nextSets.map((item) => [item.id, item.dtmLayers.map((layer) => layer.id)]))
       );
@@ -234,15 +256,9 @@ export function App() {
         ...buildDraftPayload()
       });
 
-      const nextSets = [created, ...sets];
-      setSets(nextSets);
-      setSelectedSetId(created.id);
-      setServerOrder((current) => ({
-        ...current,
-        [created.id]: created.dtmLayers.map((layer) => layer.id)
-      }));
+      await loadDashboard(created.id);
       resetDraftSelection();
-      setSuccess("Map set created and VRT generated.");
+      setSuccess(created.dtmLayers.length ? "Map set created and VRT generated." : "Map set created without DTM layers.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to create map set.");
     } finally {
@@ -261,13 +277,13 @@ export function App() {
 
     try {
       const updated = await addAssetsToSet(selectedSet.id, buildDraftPayload());
-      setSets((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setServerOrder((current) => ({
-        ...current,
-        [updated.id]: updated.dtmLayers.map((layer) => layer.id)
-      }));
+      await loadDashboard(updated.id);
       resetDraftSelection();
-      setSuccess(`Added assets to "${updated.name}" and rebuilt the VRT.`);
+      setSuccess(
+        updated.dtmLayers.length
+          ? `Added assets to "${updated.name}" and rebuilt the VRT.`
+          : `Added assets to "${updated.name}" without DTM layers.`
+      );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to add assets to the selected map set.");
     } finally {
@@ -277,6 +293,12 @@ export function App() {
 
   async function handlePersistOrder() {
     if (!selectedSet) {
+      return;
+    }
+
+    if (selectedSet.dtmLayers.length === 0) {
+      setError("");
+      setSuccess(`"${selectedSet.name}" has no DTM layers to reorder.`);
       return;
     }
 
@@ -307,9 +329,7 @@ export function App() {
 
     try {
       await deleteSet(setId);
-      const nextSets = sets.filter((item) => item.id !== setId);
-      setSets(nextSets);
-      setSelectedSetId((current) => (current === setId ? nextSets[0]?.id || "" : current));
+      await loadDashboard();
       setSuccess("Map set deleted.");
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Unable to delete map set.");
@@ -318,7 +338,7 @@ export function App() {
     }
   }
 
-  async function handleSharedUpload(fileList: FileList | null) {
+  async function handleSharedUpload(kind: "map" | "dtm", fileList: FileList | null) {
     const file = fileList?.[0];
     if (!file) {
       return;
@@ -329,22 +349,25 @@ export function App() {
     setSuccess("");
 
     try {
-      const uploaded = await uploadSharedGpkg(file);
-      setAvailableFiles((current) =>
+      const upload = kind === "map" ? uploadSharedGpkg : uploadSharedDtm;
+      const uploaded = await upload(file);
+      const setter = kind === "map" ? setAvailableMapFiles : setAvailableDtmFiles;
+
+      setter((current) =>
         [...current.filter((item) => item.relativePath !== uploaded.relativePath), uploaded].sort((left, right) =>
           left.relativePath.localeCompare(right.relativePath)
         )
       );
-      setSuccess(`Uploaded ${uploaded.fileName} to shared data.`);
+      setSuccess(`Uploaded ${uploaded.fileName} to shared GeoPackages.`);
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Unable to upload shared GeoPackage.");
+      setError(uploadError instanceof Error ? uploadError.message : "Unable to upload shared raster.");
     } finally {
       setIsUploadingShared(false);
     }
   }
 
-  function openRenameDialog(file: AvailableGpkgFile) {
-    setRenameTarget(file);
+  function openRenameDialog(kind: "map" | "dtm", file: AvailableGpkgFile) {
+    setRenameTarget({ kind, file });
     setNextSharedFileName(file.fileName);
   }
 
@@ -358,15 +381,17 @@ export function App() {
     setSuccess("");
 
     try {
-      const updated = await renameSharedGpkg(renameTarget.relativePath, nextSharedFileName);
-      setAvailableFiles((current) =>
+      const rename = renameTarget.kind === "map" ? renameSharedGpkg : renameSharedDtm;
+      const updated = await rename(renameTarget.file.relativePath, nextSharedFileName);
+      const setFiles = renameTarget.kind === "map" ? setAvailableMapFiles : setAvailableDtmFiles;
+      setFiles((current) =>
         current
-          .map((item) => (item.relativePath === renameTarget.relativePath ? updated : item))
+          .map((item) => (item.relativePath === renameTarget.file.relativePath ? updated : item))
           .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
       );
       setMaps((current) =>
         current.map((item) =>
-          item.relativePath === renameTarget.relativePath
+          item.relativePath === renameTarget.file.relativePath
             ? {
                 ...item,
                 key: `existing:${updated.relativePath}`,
@@ -379,7 +404,7 @@ export function App() {
       );
       setDtms((current) =>
         current.map((item) =>
-          item.relativePath === renameTarget.relativePath
+          item.relativePath === renameTarget.file.relativePath
             ? {
                 ...item,
                 key: `existing:${updated.relativePath}`,
@@ -387,14 +412,15 @@ export function App() {
                 size: updated.size,
                 relativePath: updated.relativePath
               }
-            : item
+          : item
         )
       );
+      await loadDashboard();
       setRenameTarget(null);
       setNextSharedFileName("");
       setSuccess(`Renamed shared GeoPackage to ${updated.fileName}.`);
     } catch (renameError) {
-      setError(renameError instanceof Error ? renameError.message : "Unable to rename shared GeoPackage.");
+      setError(renameError instanceof Error ? renameError.message : "Unable to rename shared raster.");
     } finally {
       setIsManagingShared(false);
     }
@@ -410,14 +436,16 @@ export function App() {
     setSuccess("");
 
     try {
-      await deleteSharedGpkg(deleteTarget.relativePath);
-      setAvailableFiles((current) => current.filter((item) => item.relativePath !== deleteTarget.relativePath));
-      setMaps((current) => current.filter((item) => item.relativePath !== deleteTarget.relativePath));
-      setDtms((current) => current.filter((item) => item.relativePath !== deleteTarget.relativePath));
+      const deleteFile = deleteTarget.kind === "map" ? deleteSharedGpkg : deleteSharedDtm;
+      await deleteFile(deleteTarget.file.relativePath);
+      const setFiles = deleteTarget.kind === "map" ? setAvailableMapFiles : setAvailableDtmFiles;
+      setFiles((current) => current.filter((item) => item.relativePath !== deleteTarget.file.relativePath));
+      setMaps((current) => current.filter((item) => item.relativePath !== deleteTarget.file.relativePath));
+      setDtms((current) => current.filter((item) => item.relativePath !== deleteTarget.file.relativePath));
       setDeleteTarget(null);
-      setSuccess(`Deleted shared GeoPackage ${deleteTarget.fileName}.`);
+      setSuccess(`Deleted shared GeoPackage ${deleteTarget.file.fileName}.`);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete shared GeoPackage.");
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete shared raster.");
     } finally {
       setIsManagingShared(false);
     }
@@ -457,7 +485,7 @@ export function App() {
         <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
         <List sx={{ px: 2, py: 3 }}>
           <ListItem>
-            <ListItemText primary="Map Set Manager" secondary="Pick, upload, order, publish DTMs" />
+            <ListItemText primary="Map Set Manager" secondary="Pick, upload, and optionally order DTMs" />
           </ListItem>
           <ListItem>
             <ListItemText primary="Terrain Service" secondary="Consumes generated VRTs from data/" />
@@ -476,96 +504,74 @@ export function App() {
             <Box>
               <Typography variant="h4">Map Sets</Typography>
               <Typography variant="body2" color="text.secondary">
-                Shared `data/` source of truth, explicit DTM priority, generated GDAL VRT output.
+                Shared `data/` source of truth, optional DTM priority, generated GDAL VRT output.
               </Typography>
             </Box>
           </Toolbar>
         </AppBar>
 
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ px: 2.5, py: 3, maxWidth: 1400, mx: "auto" }}>
           <Stack spacing={3}>
             {error ? <Alert severity="error">{error}</Alert> : null}
             {success ? <Alert severity="success">{success}</Alert> : null}
 
-            <Stack direction={{ xs: "column", xl: "row" }} spacing={3} alignItems="stretch">
-              <Card sx={{ flex: 1.15 }}>
-                <CardContent>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                    <Box>
-                      <Typography variant="h6">Registered Sets</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Existing map sets and generated VRT references.
-                      </Typography>
-                    </Box>
-                    <Button variant="outlined" onClick={() => void loadDashboard()} disabled={isLoading}>
-                      Refresh
-                    </Button>
+            <Card>
+              <CardContent>
+                <Stack spacing={2}>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }}>
+                    <TextField
+                      select
+                      label="Active Set"
+                      value={selectedSetId}
+                      onChange={(event) => setSelectedSetId(event.target.value)}
+                      fullWidth
+                      helperText={selectedSet ? selectedSet.description || "No description" : "Choose a set to edit"}
+                    >
+                      {sets.map((mapSet) => (
+                        <MenuItem key={mapSet.id} value={mapSet.id}>
+                          {mapSet.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <Stack direction="row" spacing={1.5}>
+                      <Button variant="outlined" onClick={() => void loadDashboard()} disabled={isLoading}>
+                        Refresh
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() => void handleDeleteSet(selectedSetId)}
+                        disabled={!selectedSet || isSaving}
+                      >
+                        Delete Set
+                      </Button>
+                    </Stack>
                   </Stack>
-
-                  <TableContainer sx={{ width: "100%", overflowX: "auto" }}>
-                    <Table size="small" sx={{ minWidth: 720 }}>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Name</TableCell>
-                          <TableCell>Maps</TableCell>
-                          <TableCell>DTMs</TableCell>
-                          <TableCell>VRT</TableCell>
-                          <TableCell align="right">Action</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {sets.map((mapSet) => (
-                          <TableRow
-                            key={mapSet.id}
-                            hover
-                            selected={mapSet.id === selectedSetId}
-                            sx={{ cursor: "pointer" }}
-                            onClick={() => setSelectedSetId(mapSet.id)}
-                          >
-                            <TableCell sx={{ minWidth: 180 }}>
-                              <Typography fontWeight={700}>{mapSet.name}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {mapSet.description || "No description"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell sx={{ whiteSpace: "nowrap" }}>{mapSet.maps.length}</TableCell>
-                            <TableCell sx={{ whiteSpace: "nowrap" }}>{mapSet.dtmLayers.length}</TableCell>
-                            <TableCell sx={{ minWidth: 240 }}>
-                              <Typography variant="caption">{mapSet.vrtPath}</Typography>
-                            </TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                              <IconButton
-                                color="error"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleDeleteSet(mapSet.id);
-                                }}
-                              >
-                                <DeleteOutlineIcon />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {!sets.length && !isLoading ? (
-                          <TableRow>
-                            <TableCell colSpan={5}>
-                              <Typography color="text.secondary">
-                                No map sets yet. Create the first one from the wizard.
-                              </Typography>
-                            </TableCell>
-                          </TableRow>
-                        ) : null}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    <Chip label={`Sets: ${sets.length}`} variant="outlined" />
+                    <Chip label={`Maps: ${selectedSet?.maps.length ?? 0}`} variant="outlined" />
+                    <Chip label={`DTMs: ${selectedSet?.dtmLayers.length ?? 0}`} variant="outlined" />
+                    <Chip
+                      label={
+                        selectedSet
+                          ? selectedSet.dtmLayers.length
+                            ? "VRT ready"
+                            : "Map-only set"
+                          : "No set selected"
+                      }
+                      variant="outlined"
+                    />
+                  </Stack>
+                  </Stack>
                 </CardContent>
               </Card>
 
+            <Stack direction={{ xs: "column", xl: "row" }} spacing={3} alignItems="stretch">
               <Card sx={{ flex: 1 }}>
                 <CardContent>
-                  <Typography variant="h6">Create VRT Set</Typography>
+                  <Typography variant="h6">Create Map Set</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    First ingest GeoPackages into the shared catalog. Then compose a VRT set by referencing catalog files in the order you want.
+                    First ingest map GeoPackages into the shared catalog. Add DTM GeoPackages only when the set needs terrain data, then compose the set in the order you want.
                   </Typography>
 
                   <Box component="form" onSubmit={handleCreateSet}>
@@ -604,7 +610,7 @@ export function App() {
                           startIcon={<CloudUploadOutlinedIcon />}
                           fullWidth
                         >
-                          Upload DTM Files to Catalog
+                          Upload DTM GeoPackages to Catalog
                           <input
                             hidden
                             type="file"
@@ -621,10 +627,10 @@ export function App() {
                             <FolderOutlinedIcon fontSize="small" />
                             <Box>
                               <Typography variant="subtitle1" fontWeight={700}>
-                                GeoPackage Catalog
+                                Map GeoPackage Catalog
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
-                                Files live once in `data/`. VRT sets reference these catalog entries instead of copying them.
+                                Files live once in `data/`. Map sets reference these GeoPackages instead of copying them.
                               </Typography>
                             </Box>
                           </Stack>
@@ -637,7 +643,7 @@ export function App() {
                             sx={{ mb: 2 }}
                           >
                             <Typography variant="body2" color="text.secondary">
-                              Upload once, then reuse the same GeoPackage in any number of VRT sets.
+                              Upload once, then reuse the same map GeoPackage in any number of VRT sets.
                             </Typography>
                             <Button
                               component="label"
@@ -645,13 +651,13 @@ export function App() {
                               startIcon={<CloudUploadOutlinedIcon />}
                               disabled={isUploadingShared || isManagingShared}
                             >
-                              Upload to Catalog
+                              Upload Map GeoPackage
                               <input
                                 hidden
                                 type="file"
                                 accept=".gpkg"
                                 onChange={(event) => {
-                                  void handleSharedUpload(event.target.files);
+                                  void handleSharedUpload("map", event.target.files);
                                   event.target.value = "";
                                 }}
                               />
@@ -671,9 +677,8 @@ export function App() {
                                 </TableRow>
                               </TableHead>
                               <TableBody>
-                                {availableFiles.map((file) => {
+                                {availableMapFiles.map((file) => {
                                   const usedAsMap = maps.some((item) => item.key === `existing:${file.relativePath}`);
-                                  const usedAsDtm = dtms.some((item) => item.key === `existing:${file.relativePath}`);
 
                                   return (
                                     <TableRow key={file.relativePath}>
@@ -711,7 +716,7 @@ export function App() {
                                             size="small"
                                             variant="text"
                                             startIcon={<DriveFileRenameOutlineIcon />}
-                                            onClick={() => openRenameDialog(file)}
+                                            onClick={() => openRenameDialog("map", file)}
                                             disabled={isManagingShared}
                                           >
                                             Rename
@@ -721,7 +726,7 @@ export function App() {
                                             variant="text"
                                             color="error"
                                             startIcon={<DeleteOutlineIcon />}
-                                            onClick={() => setDeleteTarget(file)}
+                                            onClick={() => setDeleteTarget({ kind: "map", file })}
                                             disabled={isManagingShared}
                                           >
                                             Delete
@@ -739,6 +744,141 @@ export function App() {
                                           >
                                             Map
                                           </Button>
+                                        </Stack>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                                {!availableMapFiles.length ? (
+                                  <TableRow>
+                                    <TableCell colSpan={6}>
+                                      <Typography color="text.secondary">
+                                        No map GeoPackages are available in the catalog yet.
+                                      </Typography>
+                                    </TableCell>
+                                  </TableRow>
+                                ) : null}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </CardContent>
+                      </Card>
+
+                      <Card variant="outlined">
+                        <CardContent sx={{ pb: "16px !important" }}>
+                          <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 1.5 }}>
+                            <FolderOutlinedIcon fontSize="small" />
+                            <Box>
+                          <Typography variant="subtitle1" fontWeight={700}>
+                                DTM GeoPackage Catalog
+                              </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Files live once in `data/dtms/`. Add them only when a set needs terrain layers; otherwise the set can remain map-only.
+                          </Typography>
+                            </Box>
+                          </Stack>
+
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.5}
+                            justifyContent="space-between"
+                            alignItems={{ xs: "stretch", sm: "center" }}
+                            sx={{ mb: 2 }}
+                          >
+                            <Typography variant="body2" color="text.secondary">
+                              Upload once, then reuse the same DTM GeoPackage in any number of sets that need it.
+                            </Typography>
+                            <Button
+                              component="label"
+                              variant="contained"
+                              color="secondary"
+                              startIcon={<CloudUploadOutlinedIcon />}
+                              disabled={isUploadingShared || isManagingShared}
+                            >
+                              Upload DTM GeoPackage
+                              <input
+                                hidden
+                                type="file"
+                                accept=".gpkg"
+                                onChange={(event) => {
+                                  void handleSharedUpload("dtm", event.target.files);
+                                  event.target.value = "";
+                                }}
+                              />
+                            </Button>
+                          </Stack>
+
+                          <TableContainer sx={{ width: "100%", overflowX: "auto" }}>
+                            <Table size="small" sx={{ minWidth: 1120 }}>
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>File</TableCell>
+                                  <TableCell>Path</TableCell>
+                                  <TableCell>Used By</TableCell>
+                                  <TableCell>Size</TableCell>
+                                  <TableCell align="right">Manage</TableCell>
+                                  <TableCell align="right">Use in Draft</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {availableDtmFiles.map((file) => {
+                                  const usedAsDtm = dtms.some((item) => item.key === `existing:${file.relativePath}`);
+
+                                  return (
+                                    <TableRow key={file.relativePath}>
+                                      <TableCell sx={{ minWidth: 180, whiteSpace: "nowrap" }}>{file.fileName}</TableCell>
+                                      <TableCell sx={{ minWidth: 260 }}>
+                                        <Typography variant="caption">{file.relativePath}</Typography>
+                                      </TableCell>
+                                      <TableCell sx={{ minWidth: 180 }}>
+                                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                                          {file.referencedBySets.length ? (
+                                            <Tooltip title={file.referencedBySets.join(", ")}>
+                                              <Chip size="small" label={`${file.referencedBySets.length} set(s)`} />
+                                            </Tooltip>
+                                          ) : (
+                                            <Typography variant="caption" color="text.secondary">
+                                              Not used
+                                            </Typography>
+                                          )}
+                                          {file.managedBySet ? <Chip size="small" variant="outlined" label="Managed path" /> : null}
+                                        </Stack>
+                                      </TableCell>
+                                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatFileSize(file.size)}</TableCell>
+                                      <TableCell align="right" sx={{ minWidth: 250 }}>
+                                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                          <Button
+                                            size="small"
+                                            variant="text"
+                                            startIcon={<DownloadOutlinedIcon />}
+                                            component="a"
+                                            href={getSharedDtmDownloadUrl(file.relativePath)}
+                                          >
+                                            Download
+                                          </Button>
+                                          <Button
+                                            size="small"
+                                            variant="text"
+                                            startIcon={<DriveFileRenameOutlineIcon />}
+                                            onClick={() => openRenameDialog("dtm", file)}
+                                            disabled={isManagingShared}
+                                          >
+                                            Rename
+                                          </Button>
+                                          <Button
+                                            size="small"
+                                            variant="text"
+                                            color="error"
+                                            startIcon={<DeleteOutlineIcon />}
+                                            onClick={() => setDeleteTarget({ kind: "dtm", file })}
+                                            disabled={isManagingShared}
+                                          >
+                                            Delete
+                                          </Button>
+                                        </Stack>
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ minWidth: 180, whiteSpace: "nowrap" }}>
+                                        <Stack direction="row" spacing={1} justifyContent="flex-end">
                                           <Button
                                             size="small"
                                             variant={usedAsDtm ? "contained" : "outlined"}
@@ -754,11 +894,11 @@ export function App() {
                                     </TableRow>
                                   );
                                 })}
-                                {!availableFiles.length ? (
+                                {!availableDtmFiles.length ? (
                                   <TableRow>
                                     <TableCell colSpan={6}>
                                       <Typography color="text.secondary">
-                                        No `.gpkg` files are available in the catalog yet.
+                                        No DTM GeoPackages are available in the catalog yet.
                                       </Typography>
                                     </TableCell>
                                   </TableRow>
@@ -842,7 +982,7 @@ export function App() {
                             >
                               <ListItemText
                                 primary="No DTM layers selected yet."
-                                secondary="Choose from data/ or upload new GeoPackages, then keep the highest-resolution item first."
+                                secondary="That's okay — create a map-only set, or add GeoPackages here later if you need terrain priority."
                               />
                             </ListItem>
                           ) : null}
@@ -850,8 +990,8 @@ export function App() {
                       </Box>
 
                       <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
-                        <Button type="submit" variant="contained" disabled={isSaving || !name || dtms.length === 0}>
-                          Create VRT Set
+                        <Button type="submit" variant="contained" disabled={isSaving || !name || maps.length === 0}>
+                          Create Map Set
                         </Button>
                         <Button
                           type="button"
@@ -880,7 +1020,7 @@ export function App() {
                   <Button
                     variant="contained"
                     startIcon={<SaveOutlinedIcon />}
-                    disabled={!selectedSet || isSaving}
+                    disabled={!selectedSet || isSaving || (selectedSet?.dtmLayers.length ?? 0) === 0}
                     onClick={() => void handlePersistOrder()}
                   >
                     Save DTM Order
@@ -928,8 +1068,16 @@ export function App() {
                           }}
                         >
                           <ListItemText
-                            primary="Select a map set to edit DTM ordering."
-                            secondary="The highest-resolution layers should remain at the top of the list."
+                            primary={
+                              selectedSet
+                                ? "This set has no DTM layers yet."
+                                : "Select a map set to edit DTM ordering."
+                            }
+                            secondary={
+                              selectedSet
+                                ? "Map-only sets are valid. Add DTM GeoPackages later if you need elevation-aware terrain layers."
+                                : "The highest-resolution layers should remain at the top of the list."
+                            }
                           />
                         </ListItem>
                       ) : null}
@@ -960,7 +1108,7 @@ export function App() {
                             DTMs: {selectedSet?.dtmLayers.length ?? 0}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            VRT: {selectedSet?.vrtPath ?? "N/A"}
+                            VRT: {selectedSet ? (selectedSet.dtmLayers.length ? selectedSet.vrtPath : "N/A (map-only set)") : "N/A"}
                           </Typography>
                         </CardContent>
                       </Card>
@@ -982,7 +1130,7 @@ export function App() {
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>Rename Shared GeoPackage</DialogTitle>
+        <DialogTitle>Rename Shared Raster</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body2" color="text.secondary">
@@ -1020,11 +1168,11 @@ export function App() {
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>Delete Shared GeoPackage</DialogTitle>
+        <DialogTitle>Delete Shared Raster</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Delete {deleteTarget?.fileName}? If this file is already used by a map set, deletion will be blocked until
-            those references are removed first.
+            Delete {deleteTarget?.file.fileName}? If this file is already used by a map set, deletion will be blocked
+            until those references are removed first.
           </Typography>
         </DialogContent>
         <DialogActions>

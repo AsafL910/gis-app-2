@@ -29,7 +29,13 @@ export interface MapSetRecord {
 
 export interface MapSetManifest {
   version: 1;
-  sets: MapSetRecord[];
+  name: string;
+  description?: string;
+  maps: StoredAsset[];
+  dtmLayers: DtmLayer[];
+  vrtPath: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AvailableGpkgFile {

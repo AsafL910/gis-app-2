@@ -2,13 +2,13 @@
 
 `hat-provider` is a standalone terrain RGB XYZ tile server.
 
-It reads each set's `vrtPath` from the shared `data/sets.json` manifest, parses the GeoPackages referenced by that VRT, and serves terrain-RGB PNG tiles for web XYZ clients.
+It reads each set's manifest from `data/sets/*.json`, uses the set VRT to establish source precedence, and serves exact tile PNGs directly from the underlying GeoPackages when available.
 
 Selection behavior:
 
-- tile pixels are read from the GDAL VRT itself, so source precedence follows the VRT order exactly
-- the service no longer ranks, mixes, or backfills individual GeoPackages on its own
-- PNG output is written losslessly from the VRT-backed read result
+- source precedence follows the VRT source order for direct tile lookup
+- when an exact tile is missing, the service falls back to the VRT-backed renderer so coverage stays correct
+- runtime raster work only happens on the fallback path
 
 Run locally with Pixi:
 

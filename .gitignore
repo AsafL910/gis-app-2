@@ -45,5 +45,4 @@ tmp/
 temp/
 
 *.tar
-./data/**/*
-*.gpkg
+data/

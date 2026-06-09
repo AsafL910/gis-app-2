@@ -3,8 +3,10 @@ import path from "node:path";
 import { config } from "../config.js";
 import { createId } from "../utils/id.js";
 import { resolveSharedGpkg, storeSharedGpkg } from "./available-gpkg-service.js";
-import { deleteSetRecord, getSetFolder, getSetOrThrow, listSets, saveSet } from "./manifest-store.js";
+import { resolveSharedDtm, storeSharedDtm } from "./available-dtm-service.js";
+import { deleteSetRecord, getSetOrThrow, listSets, saveSet } from "./manifest-store.js";
 import { generateDtmVrt } from "./vrt-builder.js";
+import { buildSetKey, buildSetVrtPath } from "./set-paths.js";
 import type { DtmLayer, MapSetRecord, StoredAsset, StoredAssetKind } from "../types.js";
 
 interface UploadedFileShape {
@@ -62,7 +64,8 @@ async function storeUploadedFile(
   file: UploadedFileShape
 ): Promise<StoredAsset> {
   const assetId = createId(kind);
-  const storedFile = await storeSharedGpkg(file);
+  const storedFile = kind === "map" ? await storeSharedGpkg(file) : await storeSharedDtm(file);
+  const mimeType = file.mimetype || "application/geopackage+sqlite3";
 
   return {
     id: assetId,
@@ -71,19 +74,19 @@ async function storeUploadedFile(
     storedName: storedFile.fileName,
     relativePath: storedFile.relativePath,
     absolutePath: storedFile.absolutePath,
-    mimeType: file.mimetype || "application/geopackage+sqlite3",
+    mimeType,
     size: file.size,
     createdAt: new Date().toISOString()
   };
 }
 
 async function linkSharedFileIntoSet(
-  setId: string,
   kind: StoredAssetKind,
   sharedRelativePath: string
 ): Promise<StoredAsset> {
-  const sharedFile = await resolveSharedGpkg(sharedRelativePath);
+  const sharedFile = kind === "map" ? await resolveSharedGpkg(sharedRelativePath) : await resolveSharedDtm(sharedRelativePath);
   const assetId = createId(kind);
+  const mimeType = "application/geopackage+sqlite3";
 
   return {
     id: assetId,
@@ -92,7 +95,7 @@ async function linkSharedFileIntoSet(
     storedName: sharedFile.fileName,
     relativePath: sharedRelativePath,
     absolutePath: sharedFile.absolutePath,
-    mimeType: "application/geopackage+sqlite3",
+    mimeType,
     size: sharedFile.size,
     createdAt: new Date().toISOString()
   };
@@ -122,20 +125,25 @@ export async function createSet(params: {
     throw new Error("Map set name is required.");
   }
 
-  if (params.dtms.length === 0 && (params.selectedDtmPaths?.length ?? 0) === 0) {
-    throw new Error("At least one DTM file is required.");
+  if (params.maps.length === 0 && (params.selectedMapPaths?.length ?? 0) === 0) {
+    throw new Error("At least one map file is required.");
   }
 
-  const setId = createId("set");
+  const setId = buildSetKey(params.name.trim());
+  const existingSet = await getSetOrThrow(setId).catch(() => null);
+  if (existingSet) {
+    throw new Error(`A map set named "${params.name.trim()}" already exists.`);
+  }
+
   const storedMaps = [
     ...(await Promise.all(params.maps.map((file) => storeUploadedFile("map", file)))),
     ...(await Promise.all(
-      (params.selectedMapPaths ?? []).map((filePath) => linkSharedFileIntoSet(setId, "map", filePath))
+      (params.selectedMapPaths ?? []).map((filePath) => linkSharedFileIntoSet("map", filePath))
     ))
   ];
   const uploadedDtms = await Promise.all(params.dtms.map((file) => storeUploadedFile("dtm", file)));
   const selectedDtmPaths = params.selectedDtmPaths ?? [];
-  const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => linkSharedFileIntoSet(setId, "dtm", filePath)));
+  const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => linkSharedFileIntoSet("dtm", filePath)));
   const storedDtms = buildOrderedDtms({
     uploadedDtms,
     copiedDtms,
@@ -143,10 +151,12 @@ export async function createSet(params: {
     dtmSelectionOrder: params.dtmSelectionOrder
   });
   const dtmLayers = toDtmLayers(storedDtms);
-  const vrtPath = path.join(getSetFolder(setId), `${setId}.vrt`);
+  const vrtPath = buildSetVrtPath(config.setsRoot, params.name.trim());
   const now = new Date().toISOString();
 
-  await generateDtmVrt(vrtPath, dtmLayers);
+  if (dtmLayers.length > 0) {
+    await generateDtmVrt(vrtPath, dtmLayers);
+  }
 
   const mapSet: MapSetRecord = {
     id: setId,
@@ -200,10 +210,10 @@ export async function appendAssetsToSet(
 
   const storedMaps = [
     ...(await Promise.all(params.maps.map((file) => storeUploadedFile("map", file)))),
-    ...(await Promise.all(selectedMapPaths.map((filePath) => linkSharedFileIntoSet(setId, "map", filePath))))
+    ...(await Promise.all(selectedMapPaths.map((filePath) => linkSharedFileIntoSet("map", filePath))))
   ];
   const uploadedDtms = await Promise.all(params.dtms.map((file) => storeUploadedFile("dtm", file)));
-  const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => linkSharedFileIntoSet(setId, "dtm", filePath)));
+  const copiedDtms = await Promise.all(selectedDtmPaths.map((filePath) => linkSharedFileIntoSet("dtm", filePath)));
   const storedDtms = buildOrderedDtms({
     uploadedDtms,
     copiedDtms,
@@ -218,7 +228,9 @@ export async function appendAssetsToSet(
     updatedAt: new Date().toISOString()
   };
 
-  await generateDtmVrt(updatedSet.vrtPath, updatedSet.dtmLayers);
+  if (updatedSet.dtmLayers.length > 0) {
+    await generateDtmVrt(updatedSet.vrtPath, updatedSet.dtmLayers);
+  }
   return saveSet(updatedSet);
 }
 
@@ -253,7 +265,9 @@ export async function reorderDtmLayers(setId: string, orderedDtmIds: string[]): 
     updatedAt: new Date().toISOString()
   };
 
-  await generateDtmVrt(updatedSet.vrtPath, updatedSet.dtmLayers);
+  if (updatedSet.dtmLayers.length > 0) {
+    await generateDtmVrt(updatedSet.vrtPath, updatedSet.dtmLayers);
+  }
   return saveSet(updatedSet);
 }
 
@@ -264,6 +278,15 @@ export async function removeSet(setId: string): Promise<MapSetRecord | null> {
     return null;
   }
 
-  await fs.rm(getSetFolder(setId), { recursive: true, force: true });
+  const resolvedVrtPath = path.resolve(deleted.vrtPath);
+  const parentDirectory = path.dirname(resolvedVrtPath);
+  const setsRoot = path.resolve(config.setsRoot);
+
+  if (parentDirectory === setsRoot) {
+    await fs.rm(resolvedVrtPath, { force: true });
+  } else {
+    await fs.rm(parentDirectory, { recursive: true, force: true });
+  }
+
   return deleted;
 }

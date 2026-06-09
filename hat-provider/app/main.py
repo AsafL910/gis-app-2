@@ -3,17 +3,77 @@ from fastapi.responses import Response
 
 from .config import RGB_ELEVATION_FORMULA, TILE_SIZE
 from .storage import get_map_set, list_map_sets
-from .terrain_tiles import inspect_vrt_sources, render_terrain_rgb_tile, render_terrain_rgb_tile_4326
+from .terrain_tiles import (
+    GpkgSourceMetadata,
+    inspect_sources,
+    inspect_vrt_source_paths,
+    render_terrain_rgb_tile,
+    render_terrain_rgb_tile_4326,
+)
 
 
 app = FastAPI(title="Hat Provider", version="0.1.0")
 
 
+def _source_entries(map_set: dict[str, object]) -> list[dict[str, object]]:
+    source_entries = map_set.get("dtmLayers") or map_set.get("maps") or []
+    if not isinstance(source_entries, list) or not source_entries:
+        raise RuntimeError(f'Map set "{map_set.get("name", "")}" does not contain any GeoPackage sources.')
+
+    normalized_entries: list[dict[str, object]] = []
+    for index, source_entry in enumerate(source_entries):
+        if not isinstance(source_entry, dict):
+            continue
+        source_path = str(source_entry.get("absolutePath") or source_entry.get("path") or "").strip()
+        if not source_path:
+            continue
+        normalized_entries.append(
+            {
+                "path": source_path,
+                "priority": int(source_entry.get("priority", index)),
+            }
+        )
+
+    if not normalized_entries:
+        raise RuntimeError(f'Map set "{map_set.get("name", "")}" does not contain any readable GeoPackage sources.')
+
+    ordered_paths: list[str] = []
+    vrt_path = str(map_set.get("vrtPath", "")).strip()
+    if vrt_path:
+        try:
+            ordered_paths = list(inspect_vrt_source_paths(vrt_path))
+        except Exception:
+            ordered_paths = []
+
+    if ordered_paths:
+        by_path = {entry["path"]: entry for entry in normalized_entries}
+        ordered_entries = [by_path[path] for path in ordered_paths if path in by_path]
+        leftovers = [entry for entry in normalized_entries if entry["path"] not in ordered_paths]
+        ordered_entries.extend(sorted(leftovers, key=lambda item: (item["priority"], item["path"])))
+        if ordered_entries:
+            return ordered_entries
+
+    return sorted(normalized_entries, key=lambda item: (item["priority"], item["path"]))
+
+
+def _source_paths(map_set: dict[str, object]) -> tuple[str, ...]:
+    return tuple(entry["path"] for entry in _source_entries(map_set))
+
+
 def _require_vrt_path(map_set: dict[str, object]) -> str:
     vrt_path = str(map_set.get("vrtPath", "")).strip()
     if not vrt_path:
-        raise RuntimeError(f'Map set "{map_set.get("id", "")}" is missing a vrtPath value.')
+        raise RuntimeError(f'Map set "{map_set.get("name", "")}" is missing a vrtPath value.')
     return vrt_path
+
+
+def _serialize_source(source: GpkgSourceMetadata) -> dict[str, object]:
+    return {
+        "path": source.path,
+        "crs": source.crs,
+        "resolution": source.resolution,
+        "bounds3857": source.bounds_3857,
+    }
 
 
 @app.get("/")
@@ -35,7 +95,7 @@ def list_sets() -> dict[str, list[dict[str, object]]]:
     payload: list[dict[str, object]] = []
     for map_set in list_map_sets():
         try:
-            source_set = inspect_vrt_sources(_require_vrt_path(map_set))
+            source_set = inspect_sources(_source_paths(map_set))
         except Exception as exc:
             payload.append(
                 {
@@ -62,16 +122,8 @@ def list_sets() -> dict[str, list[dict[str, object]]]:
                 "encodingFormula": RGB_ELEVATION_FORMULA,
                 "tileUrlTemplate": f"/api/hat/sets/{map_set.get('id', '')}/tiles/{{z}}/{{x}}/{{y}}.png",
                 "tileUrlTemplate4326": f"/api/hat/sets/{map_set.get('id', '')}/tiles/EPSG4326/{{z}}/{{x}}/{{y}}.png",
-                "vrtPath": source_set.vrt_path,
-                "sources": [
-                    {
-                        "path": source.path,
-                        "crs": source.crs,
-                        "resolution": source.resolution,
-                        "bounds3857": source.bounds_3857,
-                    }
-                    for source in source_set.sources
-                ],
+                "vrtPath": map_set.get("vrtPath", ""),
+                "sources": [_serialize_source(source) for source in source_set],
             }
         )
 
@@ -82,7 +134,7 @@ def list_sets() -> dict[str, list[dict[str, object]]]:
 def get_set(set_id: str) -> dict[str, object]:
     try:
         map_set = get_map_set(set_id)
-        source_set = inspect_vrt_sources(_require_vrt_path(map_set))
+        source_set = inspect_sources(_source_paths(map_set))
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -98,16 +150,8 @@ def get_set(set_id: str) -> dict[str, object]:
         "encodingFormula": RGB_ELEVATION_FORMULA,
         "tileUrlTemplate": f"/api/hat/sets/{set_id}/tiles/{{z}}/{{x}}/{{y}}.png",
         "tileUrlTemplate4326": f"/api/hat/sets/{set_id}/tiles/EPSG4326/{{z}}/{{x}}/{{y}}.png",
-        "vrtPath": source_set.vrt_path,
-        "sources": [
-            {
-                "path": source.path,
-                "crs": source.crs,
-                "resolution": source.resolution,
-                "bounds3857": source.bounds_3857,
-            }
-            for source in source_set.sources
-        ],
+        "vrtPath": map_set.get("vrtPath", ""),
+        "sources": [_serialize_source(source) for source in source_set],
     }
 
 
@@ -115,7 +159,7 @@ def get_set(set_id: str) -> dict[str, object]:
 def terrain_tile(set_id: str, z: int, x: int, y: int):
     try:
         map_set = get_map_set(set_id)
-        tile = render_terrain_rgb_tile(_require_vrt_path(map_set), z, x, y)
+        tile = render_terrain_rgb_tile(_source_paths(map_set), _require_vrt_path(map_set), z, x, y)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -126,7 +170,7 @@ def terrain_tile(set_id: str, z: int, x: int, y: int):
 def terrain_tile_4326(set_id: str, z: int, x: int, y: int):
     try:
         map_set = get_map_set(set_id)
-        tile = render_terrain_rgb_tile_4326(_require_vrt_path(map_set), z, x, y)
+        tile = render_terrain_rgb_tile_4326(_source_paths(map_set), _require_vrt_path(map_set), z, x, y)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

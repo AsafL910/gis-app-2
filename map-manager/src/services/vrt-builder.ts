@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { execFile } from "node:child_process";
+import path from "node:path";
 import { readGdalMetadata } from "./gdal-metadata.js";
 import { promisify } from "node:util";
 import type { DtmLayer } from "../types.js";
@@ -30,8 +31,11 @@ async function rewriteVrtSourcePaths(vrtPath: string, dtmLayers: DtmLayer[]): Pr
 
 export async function generateDtmVrt(vrtPath: string, dtmLayers: DtmLayer[]): Promise<void> {
   if (dtmLayers.length === 0) {
-    throw new Error("Cannot generate a VRT without at least one DTM layer.");
+    await fs.rm(vrtPath, { force: true });
+    return;
   }
+
+  await fs.mkdir(path.dirname(vrtPath), { recursive: true });
 
   for (const layer of dtmLayers) {
     const metadata = await readGdalMetadata(layer.absolutePath);

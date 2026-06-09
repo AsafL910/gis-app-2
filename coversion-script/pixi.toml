@@ -1,0 +1,20 @@
+[workspace]
+authors = ["Asaf Lumer <asaflumer@gmail.com>"]
+channels = [
+    "https://repo.anaconda.com/pkgs/main",
+    "https://repo.anaconda.com/pkgs/r",
+    "https://repo.anaconda.com/pkgs/msys2",
+    "conda-forge",
+]
+name = "rgb-gpkg-portable"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+convert = "python scripts/convert_rgb_gpkg.py"
+
+[dependencies]
+python = "==3.12.3"
+gdal = "==3.6.2"
+numpy = "<2"
+

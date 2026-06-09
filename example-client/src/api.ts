@@ -202,12 +202,7 @@ export async function fetchLayersForSet(setId: string): Promise<LayersPayload> {
 }
 
 export async function fetchAllLayers(): Promise<LayersPayload> {
-  const response = await fetch(`${mapProviderBaseUrl}/wmts?SERVICE=WMTS&REQUEST=GetCapabilities`);
-  if (!response.ok) {
-    throw new Error("Unable to load global WMTS capabilities.");
-  }
-
-  return parseCapabilitiesXml(await response.text());
+  return readJson<LayersPayload>(`${mapProviderBaseUrl}/api/layers`, "Unable to load global WMTS layers.");
 }
 
 export async function fetchHatSet(setId: string): Promise<HatSetPayload> {

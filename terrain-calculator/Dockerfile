@@ -1,18 +1,17 @@
-FROM ghcr.io/osgeo/gdal:ubuntu-small-latest
+FROM python:3.11-slim
 
 WORKDIR /app
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-pip python3-venv python3-gdal \
+  && apt-get install -y --no-install-recommends libexpat1 \
   && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m venv /opt/venv --system-site-packages
-ENV PATH="/opt/venv/bin:${PATH}"
-
-COPY pixi.toml ./
 COPY app ./app
 
-RUN python -m pip install --no-cache-dir fastapi uvicorn
+RUN python -m pip install --no-cache-dir fastapi uvicorn numpy rasterio
 
 ENV PORT=8000
 EXPOSE 8000

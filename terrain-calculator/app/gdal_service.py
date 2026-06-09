@@ -1,10 +1,12 @@
 from dataclasses import dataclass
-from math import floor
+import re
 from pathlib import Path
 
-from osgeo import gdal
+import rasterio
+from rasterio.errors import RasterioIOError
+from rasterio.windows import Window
 
-gdal.UseExceptions()
+from .config import DATA_ROOT
 
 
 @dataclass(frozen=True)
@@ -20,42 +22,65 @@ def decode_rgb_elevation(red: int, green: int, blue: int) -> float:
     return -10000 + ((red * 256 * 256 + green * 256 + blue) * 0.1)
 
 
-def world_to_pixel(geo_transform: tuple[float, float, float, float, float, float], x: float, y: float) -> tuple[int, int]:
-    det = geo_transform[1] * geo_transform[5] - geo_transform[2] * geo_transform[4]
-    if det == 0:
-        raise ValueError("Invalid GeoTransform: determinant is zero.")
-
-    pixel = (geo_transform[5] * (x - geo_transform[0]) - geo_transform[2] * (y - geo_transform[3])) / det
-    line = (-geo_transform[4] * (x - geo_transform[0]) + geo_transform[1] * (y - geo_transform[3])) / det
-    return floor(pixel), floor(line)
-
-
 def open_dataset(vrt_path: str):
-    dataset = gdal.Open(vrt_path, gdal.GA_ReadOnly)
-    if dataset is None:
-        raise RuntimeError(f"Unable to open VRT dataset at {vrt_path}")
+    try:
+        dataset = rasterio.open(vrt_path)
+    except RasterioIOError as exc:
+        raise RuntimeError(f"Unable to open VRT dataset at {vrt_path}") from exc
+
+    if dataset.count < 3:
+        dataset.close()
+        raise RuntimeError(f"Terrain source {vrt_path} must expose at least 3 bands.")
+    if dataset.crs is None:
+        dataset.close()
+        raise RuntimeError(f"Terrain source {vrt_path} is missing CRS metadata.")
     return dataset
 
 
+def _slugify_set_name(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip().replace("\\", "/")).strip("-").lower()
+    return slug or "set"
+
+
+def resolve_set_vrt_path(map_set: dict[str, object]) -> str:
+    raw_vrt_path = str(map_set.get("vrtPath", "")).strip()
+    if raw_vrt_path and raw_vrt_path.lower().endswith(".vrt"):
+        resolved_path = Path(raw_vrt_path)
+        if resolved_path.exists():
+            return str(resolved_path)
+
+    candidate_names = [
+        str(map_set.get("id", "")).strip(),
+        _slugify_set_name(str(map_set.get("name", "")).strip()),
+    ]
+    candidate_paths = []
+    for candidate_name in candidate_names:
+        if not candidate_name:
+            continue
+        candidate_paths.append((DATA_ROOT / "sets" / f"{candidate_name}.vrt").resolve())
+
+    if raw_vrt_path:
+        candidate_paths.append(Path(raw_vrt_path).resolve())
+
+    for candidate_path in candidate_paths:
+        if candidate_path.exists() and candidate_path.suffix.lower() == ".vrt":
+            return str(candidate_path)
+
+    checked = ", ".join(str(path) for path in candidate_paths) or raw_vrt_path or "<missing>"
+    raise FileNotFoundError(f"Could not resolve a set VRT for terrain calculation. Checked: {checked}")
+
+
 def sample_coordinate(dataset, coordinate: tuple[float, float]) -> RasterSample:
-    geo_transform = dataset.GetGeoTransform(can_return_null=True)
-    if geo_transform is None:
-        raise RuntimeError("VRT dataset is missing georeferencing information.")
+    row, column = dataset.index(coordinate[0], coordinate[1])
 
-    pixel, line = world_to_pixel(geo_transform, coordinate[0], coordinate[1])
-
-    if pixel < 0 or line < 0 or pixel >= dataset.RasterXSize or line >= dataset.RasterYSize:
+    if column < 0 or row < 0 or column >= dataset.width or row >= dataset.height:
         return RasterSample(coordinate=coordinate, elevation=None, pixel=None)
 
-    red = dataset.GetRasterBand(1).ReadAsArray(pixel, line, 1, 1)
-    green = dataset.GetRasterBand(2).ReadAsArray(pixel, line, 1, 1)
-    blue = dataset.GetRasterBand(3).ReadAsArray(pixel, line, 1, 1)
+    window = Window(column, row, 1, 1)
+    values = dataset.read([1, 2, 3], window=window)
 
-    if red is None or green is None or blue is None:
-        return RasterSample(coordinate=coordinate, elevation=None, pixel=(pixel, line))
-
-    elevation = decode_rgb_elevation(int(red[0][0]), int(green[0][0]), int(blue[0][0]))
-    return RasterSample(coordinate=coordinate, elevation=elevation, pixel=(pixel, line))
+    elevation = decode_rgb_elevation(int(values[0, 0, 0]), int(values[1, 0, 0]), int(values[2, 0, 0]))
+    return RasterSample(coordinate=coordinate, elevation=elevation, pixel=(column, row))
 
 
 def sample_path(dataset, coordinates: list[tuple[float, float]]) -> list[RasterSample]:

@@ -6,7 +6,7 @@ Distributed GIS demo workspace with three components:
 - `terrain-calculator`: Python + FastAPI + GDAL terrain service
 - `map-manager-ui`: React + Vite + MUI dashboard
 - `map-provider`: Python WMTS provider with a React + Vite + OpenLayers demo frontend
-- `hat-provider`: Python terrain RGB XYZ provider backed by VRT-referenced GeoPackages
+- `hat-provider`: Python terrain RGB XYZ provider backed by direct GeoPackage tile reads
 - `example-client`: standalone React + OpenLayers client example for WMTS + terrain RGB consumption
 
 The shared `data/` folder is the current source of truth.
@@ -15,12 +15,14 @@ The shared `data/` folder is the current source of truth.
 
 The management service creates and maintains:
 
-- `data/sets.json`: file-backed manifest of all map sets
-- `data/sets/<setId>/map/*`: uploaded map GeoPackages
-- `data/sets/<setId>/dtm/*`: uploaded DTM GeoPackages
-- `data/sets/<setId>/<setId>.vrt`: generated GDAL VRT for DTM queries
+- `data/sets/*.json`: per-set manifest files named from the set name
+- `data/*.gpkg`: shared map GeoPackages
+- `data/dtms/*`: shared DTM GeoPackages
+- `data/sets/*.vrt`: generated GDAL VRT files for DTM queries
 
-DTM ordering is persisted in `sets.json` as highest-resolution-first.
+Before a GeoPackage is published into the shared data folder, call the pruning step in `data/prune_transparent_tiles.ps1` from your generation pipeline on the generated file or folder. The helper removes any tile whose PNG contains transparency or cannot be decoded, then logs how many tiles were pruned and what percentage of the total that represents.
+
+DTM ordering is persisted inside each set manifest as highest-resolution-first.
 During VRT generation the XML source order is reversed so GDAL overlap precedence still favors the highest-priority layers.
 
 ## Docker demo
@@ -142,7 +144,7 @@ The Vite dev server proxies `/api` requests to `http://localhost:4002`.
 
 Location: [map-provider](D:\Courses\MAPS\israel\glb-demo\gis-app2\map-provider)
 
-The provider reads `data/sets.json`, exposes set-specific WMTS endpoints, and serves a React/OpenLayers demo from the same service.
+The provider reads per-set manifests from `data/sets/*.json`, exposes set-specific WMTS endpoints, and serves a React/OpenLayers demo from the same service.
 
 Key endpoints:
 
@@ -161,7 +163,7 @@ Notes:
 Location: [hat-provider](D:\Courses\MAPS\israel\glb-demo\gis-app2\hat-provider)
 
 The provider is intentionally separate from `map-provider` and serves terrain RGB PNG tiles for XYZ clients.
-It reads each set VRT from `data/sets.json`, inspects the GeoPackages referenced by that VRT for metadata, and reads tile pixels from the VRT itself so GDAL source precedence follows the VRT order.
+It reads each set manifest from `data/sets/*.json`, uses the set VRT to preserve source precedence, serves exact PNG tiles directly from the GeoPackages when present, and falls back to the VRT renderer only on misses.
 
 Key endpoints:
 
@@ -172,8 +174,8 @@ Key endpoints:
 
 Notes:
 
-- Tile composition follows the generated VRT order rather than custom per-source ranking in the service.
-- PNG output remains lossless; any pixel changes come from tile sampling or reprojection rather than PNG compression.
+- Tile precedence follows the VRT source order for direct tile lookup, and the VRT renderer is only used as a fallback.
+- Runtime resampling or PNG re-encoding happens only when a tile is missing from the exact GeoPackage lookup.
 
 ## Example client
 
@@ -184,7 +186,7 @@ It demonstrates how a consumer can discover sets from `map-provider`, request se
 
 ## Current assumptions
 
-- No SQL database yet; `data/sets.json` is the only persisted catalog.
-- Terrain queries are evaluated in the raster CRS used by the VRT.
+- No SQL database yet; the per-set JSON files under `data/sets/` are the persisted catalog.
+- Terrain queries resolve the set's VRT and sample from it for exact coordinate/elevation queries.
 - The generated VRT assumes DTM layers are compatible for stacking as RGB rasters.
 - The provider demo assumes WMTS-previewable map layers are raster GeoPackages in `EPSG:4326`.

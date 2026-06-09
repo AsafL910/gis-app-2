@@ -11,7 +11,6 @@ import * as ol from "ol";
 import { defaults as defaultInteractions } from "ol/interaction";
 import TileLayer from "ol/layer/Tile";
 import { get as getProjection } from "ol/proj";
-import OSM from "ol/source/OSM";
 import WMTS from "ol/source/WMTS";
 import WMTSTileGrid from "ol/tilegrid/WMTS";
 
@@ -107,11 +106,7 @@ const useMapInitializer = () => {
         showFullExtent: true,
       }),
       controls: [],
-      layers: [
-        new TileLayer({
-          source: new OSM(),
-        }),
-      ],
+      layers: [],
       interactions: defaultInteractions({ doubleClickZoom: false }),
       moveTolerance: 50,
       maxTilesLoading: 6,
@@ -236,7 +231,7 @@ const useMapInitializer = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedSet?.name, selectedSetId, setAvailableLayers, setMapLayerName]);
+  }, [selectedLayerName, selectedSet?.name, selectedSetId, setAvailableLayers, setMapLayerName]);
 
   useEffect(() => {
     if (!map) {

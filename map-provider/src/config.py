@@ -49,6 +49,73 @@ class MapSetRecord:
     vrt_path: str
 
 
+def _slugify_set_name(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip().replace("\\", "/")).strip("-").lower()
+    return slug or "set"
+
+
+def _list_set_manifest_paths() -> list[Path]:
+    if not DATA_DIR.exists():
+        return []
+
+    return sorted(
+        (path for path in DATA_DIR.joinpath("sets").glob("*.json") if path.is_file()),
+        key=str,
+    )
+
+
+def _hydrate_map_set(raw_set: dict) -> MapSetRecord:
+    name = str(raw_set.get("name", "")).strip()
+    if not name:
+        raise ValueError("Set manifest is missing a name")
+
+    maps: list[StoredAssetRecord] = []
+    dtm_layers: list[StoredAssetRecord] = []
+
+    for raw_map in raw_set.get("maps", []):
+        relative_path = str(raw_map.get("relativePath", "")).replace("\\", "/").lstrip("/")
+        if not relative_path:
+            continue
+        maps.append(
+            StoredAssetRecord(
+                id=str(raw_map.get("id", "")),
+                original_name=str(raw_map.get("originalName", "")),
+                stored_name=str(raw_map.get("storedName", "")),
+                relative_path=relative_path,
+                absolute_path=resolve_data_path(relative_path),
+                size=int(raw_map.get("size", 0)),
+            )
+        )
+
+    for raw_dtm in raw_set.get("dtmLayers", []):
+        relative_path = str(raw_dtm.get("relativePath", "")).replace("\\", "/").lstrip("/")
+        if not relative_path:
+            continue
+        dtm_layers.append(
+            StoredAssetRecord(
+                id=str(raw_dtm.get("id", "")),
+                original_name=str(raw_dtm.get("originalName", "")),
+                stored_name=str(raw_dtm.get("storedName", "")),
+                relative_path=relative_path,
+                absolute_path=resolve_data_path(relative_path),
+                size=int(raw_dtm.get("size", 0)),
+            )
+        )
+
+    vrt_path = str(raw_set.get("vrtPath", "")).strip()
+    if not vrt_path:
+        vrt_path = str((DATA_DIR / "sets" / f"{_slugify_set_name(name)}.vrt").resolve())
+
+    return MapSetRecord(
+        id=_slugify_set_name(name),
+        name=name,
+        description=str(raw_set.get("description", "") or ""),
+        maps=maps,
+        dtm_layers=dtm_layers,
+        vrt_path=vrt_path,
+    )
+
+
 def resolve_data_path(relative_path: str) -> Path:
     path = (DATA_DIR / relative_path).resolve()
     if not str(path).startswith(str(DATA_DIR)):
@@ -138,60 +205,19 @@ def load_wmts_gpkg_layers() -> list[GeoPackageLayerConfig]:
     return configs
 
 
-def load_sets_manifest() -> dict:
-    if not SETS_MANIFEST_PATH.exists():
-        return {"version": 1, "sets": []}
-
-    return json.loads(SETS_MANIFEST_PATH.read_text(encoding="utf-8"))
-
-
 def load_map_sets() -> list[MapSetRecord]:
-    manifest = load_sets_manifest()
-    results: list[MapSetRecord] = []
-
-    for raw_set in manifest.get("sets", []):
-        maps: list[StoredAssetRecord] = []
-        dtm_layers: list[StoredAssetRecord] = []
-
-        for raw_map in raw_set.get("maps", []):
-            relative_path = str(raw_map.get("relativePath", "")).replace("\\", "/").lstrip("/")
-            if not relative_path:
-                continue
-            maps.append(
-                StoredAssetRecord(
-                    id=str(raw_map.get("id", "")),
-                    original_name=str(raw_map.get("originalName", "")),
-                    stored_name=str(raw_map.get("storedName", "")),
-                    relative_path=relative_path,
-                    absolute_path=resolve_data_path(relative_path),
-                    size=int(raw_map.get("size", 0)),
-                )
-            )
-
-        for raw_dtm in raw_set.get("dtmLayers", []):
-            relative_path = str(raw_dtm.get("relativePath", "")).replace("\\", "/").lstrip("/")
-            if not relative_path:
-                continue
-            dtm_layers.append(
-                StoredAssetRecord(
-                    id=str(raw_dtm.get("id", "")),
-                    original_name=str(raw_dtm.get("originalName", "")),
-                    stored_name=str(raw_dtm.get("storedName", "")),
-                    relative_path=relative_path,
-                    absolute_path=resolve_data_path(relative_path),
-                    size=int(raw_dtm.get("size", 0)),
-                )
-            )
-
-        results.append(
-            MapSetRecord(
-                id=str(raw_set.get("id", "")),
-                name=str(raw_set.get("name", "")),
-                description=str(raw_set.get("description", "") or ""),
-                maps=maps,
-                dtm_layers=dtm_layers,
-                vrt_path=str(raw_set.get("vrtPath", "")),
-            )
+    manifest_paths = _list_set_manifest_paths()
+    if manifest_paths:
+        return sorted(
+            [_hydrate_map_set(json.loads(path.read_text(encoding="utf-8"))) for path in manifest_paths],
+            key=lambda item: item.name.lower(),
         )
 
-    return results
+    if SETS_MANIFEST_PATH.exists():
+        legacy_manifest = json.loads(SETS_MANIFEST_PATH.read_text(encoding="utf-8"))
+        return sorted(
+            [_hydrate_map_set(raw_set) for raw_set in legacy_manifest.get("sets", [])],
+            key=lambda item: item.name.lower(),
+        )
+
+    return []

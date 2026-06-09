@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 
 from .config import RGB_ELEVATION_FORMULA
-from .gdal_service import ensure_vrt_exists, open_dataset, sample_bbox, sample_coordinate, sample_path
+from .gdal_service import open_dataset, resolve_set_vrt_path, sample_bbox, sample_coordinate, sample_path
 from .models import BboxQuery, PathQuery, PointQuery, SampleResult, TerrainCalculationRequest, TerrainCalculationResponse
 from .storage import get_map_set
 
@@ -15,14 +15,16 @@ def health() -> dict[str, bool]:
 
 @app.post("/api/terrain/calculate", response_model=TerrainCalculationResponse)
 def calculate_terrain(payload: TerrainCalculationRequest) -> TerrainCalculationResponse:
+    dataset = None
     try:
         map_set = get_map_set(payload.set_id)
-        vrt_path = ensure_vrt_exists(map_set["vrtPath"])
+        vrt_path = resolve_set_vrt_path(map_set)
         dataset = open_dataset(vrt_path)
     except (FileNotFoundError, KeyError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     query = payload.query
+    samples = []
 
     try:
         if isinstance(query, PointQuery):
@@ -41,7 +43,8 @@ def calculate_terrain(payload: TerrainCalculationRequest) -> TerrainCalculationR
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
-        dataset = None
+        if dataset is not None:
+            dataset.close()
 
     return TerrainCalculationResponse(
         setId=payload.set_id,

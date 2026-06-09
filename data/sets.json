@@ -2,38 +2,61 @@
   "version": 1,
   "sets": [
     {
-      "id": "set_b41951b9-1854-48eb-88bd-0be782215b8f",
-      "name": "test1",
+      "id": "set_34382beb-d65b-4126-a8a9-9251f2cd0bee",
+      "name": "test-set-cog-1",
       "maps": [
         {
-          "id": "map_97b440a0-f774-412a-902d-ae6f4abb2836",
+          "id": "map_cc195e26-eaa8-4aab-ad23-6d13684ea4e3",
           "kind": "map",
-          "originalName": "israel_4326_z5-7.gpkg",
-          "storedName": "map_97b440a0-f774-412a-902d-ae6f4abb2836.gpkg",
-          "relativePath": "sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/map/map_97b440a0-f774-412a-902d-ae6f4abb2836.gpkg",
-          "absolutePath": "/app/data/sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/map/map_97b440a0-f774-412a-902d-ae6f4abb2836.gpkg",
+          "originalName": "gaza_strip_RGB.gpkg",
+          "storedName": "gaza_strip_RGB.gpkg",
+          "relativePath": "gaza_strip_RGB.gpkg",
+          "absolutePath": "/app/data/gaza_strip_RGB.gpkg",
           "mimeType": "application/geopackage+sqlite3",
-          "size": 217088,
-          "createdAt": "2026-05-19T16:34:17.394Z"
+          "size": 1748992,
+          "createdAt": "2026-05-31T11:49:36.189Z"
+        },
+        {
+          "id": "map_a43f4cb2-8199-45ed-9552-133ddda458bf",
+          "kind": "map",
+          "originalName": "israel_RGB.gpkg",
+          "storedName": "israel_RGB.gpkg",
+          "relativePath": "israel_RGB.gpkg",
+          "absolutePath": "/app/data/israel_RGB.gpkg",
+          "mimeType": "application/geopackage+sqlite3",
+          "size": 23486464,
+          "createdAt": "2026-05-31T11:49:36.189Z"
         }
       ],
       "dtmLayers": [
         {
-          "id": "dtm_bd90789f-81d8-4771-bcb6-23c736337c93",
+          "id": "dtm_ad37af9d-dc66-4c04-99c5-8cf626ac4b48",
           "kind": "dtm",
-          "originalName": "israel_4326_z5-7.gpkg",
-          "storedName": "dtm_bd90789f-81d8-4771-bcb6-23c736337c93.gpkg",
-          "relativePath": "sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/dtm/dtm_bd90789f-81d8-4771-bcb6-23c736337c93.gpkg",
-          "absolutePath": "/app/data/sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/dtm/dtm_bd90789f-81d8-4771-bcb6-23c736337c93.gpkg",
-          "mimeType": "application/geopackage+sqlite3",
-          "size": 217088,
-          "createdAt": "2026-05-19T16:34:17.413Z",
+          "originalName": "israel_bottom_cog_rgb_4326_cog.tif",
+          "storedName": "israel_bottom_cog_rgb_4326_cog.tif",
+          "relativePath": "israel_bottom_cog_rgb_4326_cog.tif",
+          "absolutePath": "/app/data/dtms/israel_bottom_cog_rgb_4326_cog.tif",
+          "mimeType": "image/tiff",
+          "size": 60323913,
+          "createdAt": "2026-05-31T11:49:36.191Z",
           "priority": 0
+        },
+        {
+          "id": "dtm_43a4c5e8-1658-451c-8ac7-6bde6b1914c5",
+          "kind": "dtm",
+          "originalName": "israel_top_cog_rgb_4326_cog.tif",
+          "storedName": "israel_top_cog_rgb_4326_cog.tif",
+          "relativePath": "israel_top_cog_rgb_4326_cog.tif",
+          "absolutePath": "/app/data/dtms/israel_top_cog_rgb_4326_cog.tif",
+          "mimeType": "image/tiff",
+          "size": 33305125,
+          "createdAt": "2026-05-31T11:49:36.191Z",
+          "priority": 1
         }
       ],
-      "vrtPath": "/app/data/sets/set_b41951b9-1854-48eb-88bd-0be782215b8f/set_b41951b9-1854-48eb-88bd-0be782215b8f.vrt",
-      "createdAt": "2026-05-19T16:34:17.414Z",
-      "updatedAt": "2026-05-19T16:34:17.414Z"
+      "vrtPath": "/app/data/sets/test-set-cog-1.vrt",
+      "createdAt": "2026-05-31T11:49:36.194Z",
+      "updatedAt": "2026-05-31T11:49:36.194Z"
     }
   ]
 }

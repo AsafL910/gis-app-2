@@ -1,0 +1,67 @@
+services:
+  map-manager:
+    image: map-manager:alpha
+    container_name: gis-map-manager
+    environment:
+      DATA_DIR: /app/data
+      PORT: 4002
+    ports:
+      - "4002:4002"
+    volumes:
+      - ./data:/app/data
+
+  terrain-calculator:
+    image: terrain-calculator:alpha
+    container_name: gis-terrain-calculator
+    environment:
+      DATA_DIR: /app/data
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+
+  map-manager-ui:
+    image: map-manager-ui:alpha
+    container_name: gis-map-manager-ui
+    environment:
+      PORT: 5173
+      VITE_PROXY_TARGET: http://map-manager:4002
+    depends_on:
+      - map-manager
+    ports:
+      - "5173:5173"
+
+  map-provider:
+    image: map-provider:alpha
+    container_name: gis-map-provider
+    environment:
+      PORT: 8003
+      DATA_DIR: /app/data
+      PUBLIC_BASE_URL: http://localhost:8003
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./data:/app/data
+
+  hat-provider:
+    image: hat-provider:alpha
+    container_name: gis-hat-provider
+    environment:
+      PORT: 8004
+      DATA_DIR: /app/data
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./data:/app/data
+
+  example-client:
+    image: example-client:alpha
+    container_name: gis-example-client
+    environment:
+      PORT: 4174
+    depends_on:
+      - map-provider
+      - hat-provider
+    ports:
+      - "4174:4174"

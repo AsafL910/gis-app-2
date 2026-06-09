@@ -19,24 +19,25 @@ function toFileSize(size: number | bigint): number {
   return Number(size);
 }
 
-async function walkForGpkgs(directoryPath: string, files: AvailableGpkgFile[]): Promise<void> {
+async function walkForDtms(directoryPath: string, files: AvailableGpkgFile[]): Promise<void> {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
 
   for (const entry of entries) {
     const absolutePath = path.join(directoryPath, entry.name);
 
     if (entry.isDirectory()) {
-      await walkForGpkgs(absolutePath, files);
+      await walkForDtms(absolutePath, files);
       continue;
     }
 
-    if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== ".gpkg") {
+    const extension = path.extname(entry.name).toLowerCase();
+    if (!entry.isFile() || extension !== ".gpkg") {
       continue;
     }
 
     const stats = await fs.stat(absolutePath);
     files.push({
-      relativePath: path.relative(config.sharedDataRoot, absolutePath),
+      relativePath: path.relative(config.sharedDtmRoot, absolutePath),
       absolutePath,
       fileName: path.basename(absolutePath),
       size: toFileSize(stats.size),
@@ -49,9 +50,7 @@ async function walkForGpkgs(directoryPath: string, files: AvailableGpkgFile[]): 
 
 function getReferencingSetNames(relativePath: string, sets: Awaited<ReturnType<typeof listSets>>): string[] {
   return sets.flatMap((set) => {
-    const isReferenced =
-      set.maps.some((asset) => asset.relativePath === relativePath) ||
-      set.dtmLayers.some((asset) => asset.relativePath === relativePath);
+    const isReferenced = set.dtmLayers.some((asset) => asset.relativePath === relativePath);
 
     return isReferenced ? [set.name] : [];
   });
@@ -63,7 +62,7 @@ function toAvailableFile(
   referencedBySets: string[]
 ): AvailableGpkgFile {
   return {
-    relativePath: path.relative(config.sharedDataRoot, absolutePath),
+    relativePath: path.relative(config.sharedDtmRoot, absolutePath),
     absolutePath,
     fileName: path.basename(absolutePath),
     size: toFileSize(stats.size),
@@ -79,14 +78,15 @@ async function getSharedFileInfo(relativePath: string): Promise<{
   size: number;
   modifiedAt: string;
 }> {
-  const candidatePath = path.resolve(config.sharedDataRoot, relativePath);
+  const candidatePath = path.resolve(config.sharedDtmRoot, relativePath);
 
-  if (!isWithin(config.sharedDataRoot, candidatePath)) {
-    throw new Error("Selected file must stay inside the shared data folder.");
+  if (!isWithin(config.sharedDtmRoot, candidatePath)) {
+    throw new Error("Selected file must stay inside the shared DTM folder.");
   }
 
-  if (path.extname(candidatePath).toLowerCase() !== ".gpkg") {
-    throw new Error("Only .gpkg files can be selected from the shared data folder.");
+  const extension = path.extname(candidatePath).toLowerCase();
+  if (extension !== ".gpkg") {
+    throw new Error("Only .gpkg files can be selected from the DTM folder.");
   }
 
   const stats = await fs.stat(candidatePath);
@@ -113,16 +113,17 @@ function validateSharedFileName(fileName: string): string {
     throw new Error("GeoPackage file name cannot include folder segments.");
   }
 
-  if (path.extname(normalized).toLowerCase() !== ".gpkg") {
+  const extension = path.extname(normalized).toLowerCase();
+  if (extension !== ".gpkg") {
     throw new Error("GeoPackage file names must end with .gpkg.");
   }
 
   return normalized;
 }
 
-export async function listAvailableGpkgs(): Promise<AvailableGpkgFile[]> {
+export async function listAvailableDtms(): Promise<AvailableGpkgFile[]> {
   const files: AvailableGpkgFile[] = [];
-  await walkForGpkgs(config.sharedDataRoot, files);
+  await walkForDtms(config.sharedDtmRoot, files);
   const sets = await listSets();
 
   return files
@@ -133,7 +134,7 @@ export async function listAvailableGpkgs(): Promise<AvailableGpkgFile[]> {
     .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
 
-export async function storeSharedGpkg(file: {
+export async function storeSharedDtm(file: {
   originalname: string;
   mimetype: string;
   size: number;
@@ -141,10 +142,10 @@ export async function storeSharedGpkg(file: {
 }): Promise<AvailableGpkgFile> {
   const fileName = validateSharedFileName(path.basename(file.originalname));
 
-  const absolutePath = path.join(config.sharedDataRoot, fileName);
+  const absolutePath = path.join(config.sharedDtmRoot, fileName);
 
   if (isWithin(config.setsRoot, absolutePath)) {
-    throw new Error("Shared GeoPackages cannot be uploaded into the managed sets folder.");
+    throw new Error("Shared DTMs cannot be uploaded into the managed sets folder.");
   }
 
   try {
@@ -164,7 +165,7 @@ export async function storeSharedGpkg(file: {
   return toAvailableFile(absolutePath, stats, []);
 }
 
-export async function renameSharedGpkg(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
+export async function renameSharedDtm(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
   const current = await getSharedFileInfo(relativePath);
   const normalizedFileName = validateSharedFileName(nextFileName);
 
@@ -172,10 +173,10 @@ export async function renameSharedGpkg(relativePath: string, nextFileName: strin
     throw new Error("Choose a different file name before saving.");
   }
 
-  const nextAbsolutePath = path.join(config.sharedDataRoot, normalizedFileName);
+  const nextAbsolutePath = path.join(config.sharedDtmRoot, normalizedFileName);
 
   if (isWithin(config.setsRoot, nextAbsolutePath)) {
-    throw new Error("Shared GeoPackages cannot be renamed into the managed sets folder.");
+    throw new Error("Shared DTMs cannot be renamed into the managed sets folder.");
   }
 
   try {
@@ -192,19 +193,8 @@ export async function renameSharedGpkg(relativePath: string, nextFileName: strin
   await fs.rename(current.absolutePath, nextAbsolutePath);
 
   const sets = await listSets();
-  const nextRelativePath = path.relative(config.sharedDataRoot, nextAbsolutePath);
+  const nextRelativePath = path.relative(config.sharedDtmRoot, nextAbsolutePath);
   const updatedSets = sets.map((set) => {
-    const nextMaps = set.maps.map((asset) =>
-      asset.relativePath === relativePath
-        ? {
-            ...asset,
-            originalName: normalizedFileName,
-            storedName: normalizedFileName,
-            relativePath: nextRelativePath,
-            absolutePath: nextAbsolutePath
-          }
-        : asset
-    );
     const nextDtmLayers = set.dtmLayers.map((asset) =>
       asset.relativePath === relativePath
         ? {
@@ -217,14 +207,11 @@ export async function renameSharedGpkg(relativePath: string, nextFileName: strin
         : asset
     );
 
-    const changed =
-      nextMaps.some((asset, index) => asset !== set.maps[index]) ||
-      nextDtmLayers.some((asset, index) => asset !== set.dtmLayers[index]);
+    const changed = nextDtmLayers.some((asset, index) => asset !== set.dtmLayers[index]);
 
     return changed
       ? {
           ...set,
-          maps: nextMaps,
           dtmLayers: nextDtmLayers,
           updatedAt: new Date().toISOString()
         }
@@ -241,7 +228,7 @@ export async function renameSharedGpkg(relativePath: string, nextFileName: strin
   return toAvailableFile(nextAbsolutePath, stats, getReferencingSetNames(nextRelativePath, updatedSets));
 }
 
-export async function deleteSharedGpkg(relativePath: string): Promise<void> {
+export async function deleteSharedDtm(relativePath: string): Promise<void> {
   const file = await getSharedFileInfo(relativePath);
   const sets = await listSets();
   const referencedBySets = getReferencingSetNames(relativePath, sets);
@@ -253,7 +240,7 @@ export async function deleteSharedGpkg(relativePath: string): Promise<void> {
   await fs.rm(file.absolutePath, { force: false });
 }
 
-export async function getDownloadableSharedGpkg(relativePath: string): Promise<{
+export async function getDownloadableSharedDtm(relativePath: string): Promise<{
   absolutePath: string;
   fileName: string;
 }> {
@@ -264,7 +251,7 @@ export async function getDownloadableSharedGpkg(relativePath: string): Promise<{
   };
 }
 
-export async function resolveSharedGpkg(relativePath: string): Promise<{
+export async function resolveSharedDtm(relativePath: string): Promise<{
   absolutePath: string;
   fileName: string;
   size: number;

@@ -50,11 +50,36 @@ export async function fetchAvailableGpkgs(): Promise<AvailableGpkgFile[]> {
   return payload.files;
 }
 
+export async function fetchAvailableDtms(): Promise<AvailableGpkgFile[]> {
+  const response = await fetch("/api/sets/available-dtms");
+  const payload = await readJsonOrThrow<{ files: AvailableGpkgFile[] }>(
+    response,
+    "Unable to load available DTMs.",
+  );
+  return payload.files;
+}
+
 export async function uploadSharedGpkg(file: File): Promise<AvailableGpkgFile> {
   const form = new FormData();
   form.append("gpkg", file);
 
   const response = await fetch("/api/sets/available-gpkgs/upload", {
+    method: "POST",
+    body: form,
+  });
+
+  const payload = await readJsonOrThrow<{ file: AvailableGpkgFile }>(
+    response,
+    "Unable to upload GeoPackage to the shared data folder.",
+  );
+  return payload.file;
+}
+
+export async function uploadSharedDtm(file: File): Promise<AvailableGpkgFile> {
+  const form = new FormData();
+  form.append("dtm", file);
+
+  const response = await fetch("/api/sets/available-dtms/upload", {
     method: "POST",
     body: form,
   });
@@ -91,6 +116,36 @@ export async function deleteSharedGpkg(relativePath: string): Promise<void> {
 
 export function getSharedGpkgDownloadUrl(relativePath: string): string {
   return `/api/sets/available-gpkgs/download?path=${encodeURIComponent(relativePath)}`;
+}
+
+export async function renameSharedDtm(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
+  const response = await fetch("/api/sets/available-dtms", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ relativePath, nextFileName }),
+  });
+
+  const payload = await readJsonOrThrow<{ file: AvailableGpkgFile }>(
+    response,
+    "Unable to rename shared GeoPackage.",
+  );
+  return payload.file;
+}
+
+export async function deleteSharedDtm(relativePath: string): Promise<void> {
+  const response = await fetch(`/api/sets/available-dtms?path=${encodeURIComponent(relativePath)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    await readJsonOrThrow(response, "Unable to delete shared GeoPackage.");
+  }
+}
+
+export function getSharedDtmDownloadUrl(relativePath: string): string {
+  return `/api/sets/available-dtms/download?path=${encodeURIComponent(relativePath)}`;
 }
 
 export async function createSet(input: {

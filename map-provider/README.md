@@ -52,9 +52,9 @@ When changing this service, prefer:
 
 Expected inputs:
 
-- `data/sets.json`
+- `data/sets/*.json`
 - global `.gpkg` files under `data/`
-- optional set map GeoPackages under `data/sets/<setId>/map/`
+- per-set manifests and VRT files under `data/sets/`
 
 Primary endpoints:
 
