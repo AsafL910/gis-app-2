@@ -12,7 +12,8 @@ export function createOpenApiDocument() {
     tags: [
       { name: "Health", description: "Service status checks" },
       { name: "Sets", description: "Map set lifecycle and asset management" },
-      { name: "Shared Files", description: "Shared GeoPackage library endpoints" }
+      { name: "Maps", description: "Shared map GeoPackage library endpoints" },
+      { name: "DTMs", description: "Shared DTM GeoPackage library endpoints" }
     ],
     servers: [{ url: "/" }],
     paths: {
@@ -33,10 +34,10 @@ export function createOpenApiDocument() {
           }
         }
       },
-      "/api/sets/available-gpkgs": {
+      "/api/maps": {
         get: {
-          tags: ["Shared Files"],
-          summary: "List shared GeoPackages",
+          tags: ["Maps"],
+          summary: "List shared maps",
           operationId: "listSharedGpkgs",
           responses: {
             200: {
@@ -60,8 +61,8 @@ export function createOpenApiDocument() {
           }
         },
         patch: {
-          tags: ["Shared Files"],
-          summary: "Rename a shared GeoPackage",
+          tags: ["Maps"],
+          summary: "Rename a shared map",
           operationId: "renameSharedGpkg",
           requestBody: {
             required: true,
@@ -98,8 +99,8 @@ export function createOpenApiDocument() {
           }
         },
         delete: {
-          tags: ["Shared Files"],
-          summary: "Delete a shared GeoPackage",
+          tags: ["Maps"],
+          summary: "Delete a shared map",
           operationId: "deleteSharedGpkg",
           parameters: [
             {
@@ -127,10 +128,10 @@ export function createOpenApiDocument() {
           }
         }
       },
-      "/api/sets/available-gpkgs/upload": {
+      "/api/maps/upload": {
         post: {
-          tags: ["Shared Files"],
-          summary: "Upload a shared GeoPackage",
+          tags: ["Maps"],
+          summary: "Upload a shared map",
           operationId: "uploadSharedGpkg",
           requestBody: {
             required: true,
@@ -177,10 +178,10 @@ export function createOpenApiDocument() {
           }
         }
       },
-      "/api/sets/available-gpkgs/download": {
+      "/api/maps/download": {
         get: {
-          tags: ["Shared Files"],
-          summary: "Download a shared GeoPackage",
+          tags: ["Maps"],
+          summary: "Download a shared map",
           operationId: "downloadSharedGpkg",
           parameters: [
             {
@@ -208,9 +209,9 @@ export function createOpenApiDocument() {
           }
         }
       },
-      "/api/sets/available-dtms": {
+      "/api/dtms": {
         get: {
-          tags: ["Shared Files"],
+          tags: ["DTMs"],
           summary: "List shared DTMs",
           operationId: "listSharedDtms",
           responses: {
@@ -235,7 +236,7 @@ export function createOpenApiDocument() {
           }
         },
         patch: {
-          tags: ["Shared Files"],
+          tags: ["DTMs"],
           summary: "Rename a shared DTM",
           operationId: "renameSharedDtm",
           requestBody: {
@@ -273,7 +274,7 @@ export function createOpenApiDocument() {
           }
         },
         delete: {
-          tags: ["Shared Files"],
+          tags: ["DTMs"],
           summary: "Delete a shared DTM",
           operationId: "deleteSharedDtm",
           parameters: [
@@ -302,9 +303,9 @@ export function createOpenApiDocument() {
           }
         }
       },
-      "/api/sets/available-dtms/upload": {
+      "/api/dtms/upload": {
         post: {
-          tags: ["Shared Files"],
+          tags: ["DTMs"],
           summary: "Upload a shared DTM",
           operationId: "uploadSharedDtm",
           requestBody: {
@@ -352,9 +353,9 @@ export function createOpenApiDocument() {
           }
         }
       },
-      "/api/sets/available-dtms/download": {
+      "/api/dtms/download": {
         get: {
-          tags: ["Shared Files"],
+          tags: ["DTMs"],
           summary: "Download a shared DTM",
           operationId: "downloadSharedDtm",
           parameters: [
@@ -563,4 +564,3 @@ export function createOpenApiDocument() {
     }
   };
 }
-

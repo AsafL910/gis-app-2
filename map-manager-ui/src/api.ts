@@ -42,16 +42,16 @@ export async function fetchSets(): Promise<MapSetRecord[]> {
 }
 
 export async function fetchAvailableGpkgs(): Promise<AvailableGpkgFile[]> {
-  const response = await fetch("/api/sets/available-gpkgs");
+  const response = await fetch("/api/maps");
   const payload = await readJsonOrThrow<{ files: AvailableGpkgFile[] }>(
     response,
-    "Unable to load available GeoPackages.",
+    "Unable to load available maps.",
   );
   return payload.files;
 }
 
 export async function fetchAvailableDtms(): Promise<AvailableGpkgFile[]> {
-  const response = await fetch("/api/sets/available-dtms");
+  const response = await fetch("/api/dtms");
   const payload = await readJsonOrThrow<{ files: AvailableGpkgFile[] }>(
     response,
     "Unable to load available DTMs.",
@@ -63,14 +63,14 @@ export async function uploadSharedGpkg(file: File): Promise<AvailableGpkgFile> {
   const form = new FormData();
   form.append("gpkg", file);
 
-  const response = await fetch("/api/sets/available-gpkgs/upload", {
+  const response = await fetch("/api/maps/upload", {
     method: "POST",
     body: form,
   });
 
   const payload = await readJsonOrThrow<{ file: AvailableGpkgFile }>(
     response,
-    "Unable to upload GeoPackage to the shared data folder.",
+    "Unable to upload map GeoPackage to the shared data folder.",
   );
   return payload.file;
 }
@@ -79,20 +79,20 @@ export async function uploadSharedDtm(file: File): Promise<AvailableGpkgFile> {
   const form = new FormData();
   form.append("dtm", file);
 
-  const response = await fetch("/api/sets/available-dtms/upload", {
+  const response = await fetch("/api/dtms/upload", {
     method: "POST",
     body: form,
   });
 
   const payload = await readJsonOrThrow<{ file: AvailableGpkgFile }>(
     response,
-    "Unable to upload GeoPackage to the shared data folder.",
+    "Unable to upload DTM GeoPackage to the shared data folder.",
   );
   return payload.file;
 }
 
 export async function renameSharedGpkg(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
-  const response = await fetch("/api/sets/available-gpkgs", {
+  const response = await fetch("/api/maps", {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -105,7 +105,7 @@ export async function renameSharedGpkg(relativePath: string, nextFileName: strin
 }
 
 export async function deleteSharedGpkg(relativePath: string): Promise<void> {
-  const response = await fetch(`/api/sets/available-gpkgs?path=${encodeURIComponent(relativePath)}`, {
+  const response = await fetch(`/api/maps?path=${encodeURIComponent(relativePath)}`, {
     method: "DELETE",
   });
 
@@ -115,11 +115,11 @@ export async function deleteSharedGpkg(relativePath: string): Promise<void> {
 }
 
 export function getSharedGpkgDownloadUrl(relativePath: string): string {
-  return `/api/sets/available-gpkgs/download?path=${encodeURIComponent(relativePath)}`;
+  return `/api/maps/download?path=${encodeURIComponent(relativePath)}`;
 }
 
 export async function renameSharedDtm(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
-  const response = await fetch("/api/sets/available-dtms", {
+  const response = await fetch("/api/dtms", {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -135,7 +135,7 @@ export async function renameSharedDtm(relativePath: string, nextFileName: string
 }
 
 export async function deleteSharedDtm(relativePath: string): Promise<void> {
-  const response = await fetch(`/api/sets/available-dtms?path=${encodeURIComponent(relativePath)}`, {
+  const response = await fetch(`/api/dtms?path=${encodeURIComponent(relativePath)}`, {
     method: "DELETE",
   });
 
@@ -145,7 +145,7 @@ export async function deleteSharedDtm(relativePath: string): Promise<void> {
 }
 
 export function getSharedDtmDownloadUrl(relativePath: string): string {
-  return `/api/sets/available-dtms/download?path=${encodeURIComponent(relativePath)}`;
+  return `/api/dtms/download?path=${encodeURIComponent(relativePath)}`;
 }
 
 export async function createSet(input: {
