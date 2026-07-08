@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 
 from .config import RGB_ELEVATION_FORMULA, SERVICE_VERSION
 from .gdal_service import open_dataset, resolve_set_vrt_path, sample_bbox, sample_coordinate, sample_path
+from .http_status import HttpStatus
 from .models import BboxQuery, PathQuery, PointQuery, SampleResult, TerrainCalculationRequest, TerrainCalculationResponse
 from .storage import get_map_set
 
@@ -21,7 +22,7 @@ def calculate_terrain(payload: TerrainCalculationRequest) -> TerrainCalculationR
         vrt_path = resolve_set_vrt_path(map_set)
         dataset = open_dataset(vrt_path)
     except (FileNotFoundError, KeyError, RuntimeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     query = payload.query
     samples = []
@@ -39,9 +40,9 @@ def calculate_terrain(payload: TerrainCalculationRequest) -> TerrainCalculationR
                 query.sampling.rows,
             )
         else:
-            raise HTTPException(status_code=400, detail="Unsupported query type.")
+            raise HTTPException(status_code=HttpStatus.BAD_REQUEST, detail="Unsupported query type.")
     except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.BAD_REQUEST, detail=str(exc)) from exc
     finally:
         if dataset is not None:
             dataset.close()

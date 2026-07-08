@@ -2,6 +2,7 @@ from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.responses import Response
 
 from .config import RGB_ELEVATION_FORMULA, TILE_SIZE, SERVICE_VERSION
+from .http_status import HttpStatus
 from .storage import get_map_set, list_map_sets
 from .models import GpkgSourceMetadata
 from .services.gpkg_reader import inspect_sources
@@ -188,9 +189,9 @@ def get_set(set_id: str) -> dict[str, object]:
     try:
         return _get_set_impl(set_id)
     except (KeyError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @legacy_router.get("/sets/{set_id}")
@@ -198,9 +199,9 @@ def legacy_get_set(set_id: str) -> dict[str, object]:
     try:
         return _get_set_impl(set_id)
     except (KeyError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @api_router.get("/sets/{set_id}/tiles/{z}/{x}/{y}.png")
@@ -208,7 +209,7 @@ def terrain_tile(set_id: str, z: int, x: int, y: int):
     try:
         return _tile_impl(set_id, z, x, y)
     except (KeyError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=str(exc)) from exc
 
 
 @legacy_router.get("/sets/{set_id}/tiles/{z}/{x}/{y}.png")
@@ -216,7 +217,7 @@ def legacy_terrain_tile(set_id: str, z: int, x: int, y: int):
     try:
         return _tile_impl(set_id, z, x, y)
     except (KeyError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=str(exc)) from exc
 
 
 @legacy_router.get("/sets/{set_id}/tiles/EPSG4326/{z}/{x}/{y}.png", include_in_schema=False)
@@ -224,7 +225,7 @@ def legacy_terrain_tile_4326(set_id: str, z: int, x: int, y: int):
     try:
         return _tile_impl(set_id, z, x, y)
     except (KeyError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=str(exc)) from exc
 
 
 app.include_router(api_router)

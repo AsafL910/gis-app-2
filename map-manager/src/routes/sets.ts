@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { HttpStatus } from "../http-status.js";
 import { appendAssetsToSet, createSet, getAllSets, removeSet, reorderDtmLayers } from "../services/set-service.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -94,10 +95,10 @@ setsRouter.post(
         dtmSelectionOrder: parseDtmSelectionOrder(request.body.dtmSelectionOrder)
       });
 
-      response.status(201).json(created);
+      response.status(HttpStatus.CREATED).json(created);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create map set.";
-      response.status(400).json({ error: message });
+      response.status(HttpStatus.BAD_REQUEST).json({ error: message });
     }
   }
 );
@@ -125,7 +126,7 @@ setsRouter.post(
       response.json(updated);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to add assets to map set.";
-      response.status(400).json({ error: message });
+      response.status(HttpStatus.BAD_REQUEST).json({ error: message });
     }
   }
 );
@@ -135,7 +136,7 @@ setsRouter.put("/:id/dtm-order", async (request, response) => {
     const dtmIds = Array.isArray(request.body?.dtmIds) ? request.body.dtmIds : null;
 
     if (!dtmIds || !dtmIds.every((value: unknown) => typeof value === "string")) {
-      response.status(400).json({ error: "Body must include dtmIds: string[]" });
+      response.status(HttpStatus.BAD_REQUEST).json({ error: "Body must include dtmIds: string[]" });
       return;
     }
 
@@ -143,7 +144,7 @@ setsRouter.put("/:id/dtm-order", async (request, response) => {
     response.json(updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to reorder DTM layers.";
-    response.status(400).json({ error: message });
+    response.status(HttpStatus.BAD_REQUEST).json({ error: message });
   }
 });
 
@@ -151,9 +152,9 @@ setsRouter.delete("/:id", async (request, response) => {
   const deleted = await removeSet(readRouteId(request.params.id));
 
   if (!deleted) {
-    response.status(404).json({ error: "Map set not found." });
+    response.status(HttpStatus.NOT_FOUND).json({ error: "Map set not found." });
     return;
   }
 
-  response.status(204).send();
+  response.status(HttpStatus.NO_CONTENT).send();
 });

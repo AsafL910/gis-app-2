@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { HttpStatus } from "../http-status.js";
 import {
   deleteSharedGpkg,
   getDownloadableSharedGpkg,
@@ -19,15 +20,15 @@ mapsRouter.get("/", async (_request, response) => {
 mapsRouter.post("/upload", upload.single("gpkg"), async (request, response) => {
   try {
     if (!request.file) {
-      response.status(400).json({ error: "A .gpkg file is required." });
+      response.status(HttpStatus.BAD_REQUEST).json({ error: "A .gpkg file is required." });
       return;
     }
 
     const stored = await storeSharedGpkg(request.file);
-    response.status(201).json({ file: stored });
+    response.status(HttpStatus.CREATED).json({ file: stored });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to upload shared GeoPackage.";
-    response.status(400).json({ error: message });
+    response.status(HttpStatus.BAD_REQUEST).json({ error: message });
   }
 });
 
@@ -38,7 +39,7 @@ mapsRouter.get("/download", async (request, response) => {
     response.download(file.absolutePath, file.fileName);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to download shared GeoPackage.";
-    response.status(400).json({ error: message });
+    response.status(HttpStatus.BAD_REQUEST).json({ error: message });
   }
 });
 
@@ -50,7 +51,7 @@ mapsRouter.patch("/", async (request, response) => {
     response.json({ file: updated });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to rename shared GeoPackage.";
-    response.status(400).json({ error: message });
+    response.status(HttpStatus.BAD_REQUEST).json({ error: message });
   }
 });
 
@@ -58,10 +59,9 @@ mapsRouter.delete("/", async (request, response) => {
   try {
     const relativePath = typeof request.query.path === "string" ? request.query.path : "";
     await deleteSharedGpkg(relativePath);
-    response.status(204).send();
+    response.status(HttpStatus.NO_CONTENT).send();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete shared GeoPackage.";
-    response.status(400).json({ error: message });
+    response.status(HttpStatus.BAD_REQUEST).json({ error: message });
   }
 });
-

@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { registerSwagger } from "./docs/swagger.js";
+import { HttpStatus } from "./http-status.js";
 import { dtmsRouter } from "./routes/dtms.js";
 import { mapsRouter } from "./routes/maps.js";
 import { setsRouter } from "./routes/sets.js";
@@ -24,7 +25,7 @@ export function createApp() {
   app.use("/api/v1/dtms", dtmsRouter);
 
   app.use((error: Error, _request: Request, response: Response, _next: NextFunction) => {
-    response.status(500).json({
+    response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       error: error.message || "Unexpected server error."
     });
   });

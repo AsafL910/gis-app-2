@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from src.config import load_map_sets
+from src.http_status import HttpStatus
 from src.models.catalog import CatalogSet
 
 
@@ -23,4 +24,4 @@ def get_catalog_set_or_404(set_id: str) -> CatalogSet:
         if map_set.id == set_id or map_set.name == set_id:
             return map_set
 
-    raise HTTPException(status_code=404, detail=f'Map set "{set_id}" was not found.')
+    raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=f'Map set "{set_id}" was not found.')

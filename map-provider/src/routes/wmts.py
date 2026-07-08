@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from src.config import API_PREFIX, PUBLIC_BASE_URL
+from src.http_status import HttpStatus
 from src.services.wmts import build_wmts_capabilities_xml, render_wmts_tile
 
 
@@ -47,7 +48,7 @@ def wmts_kvp(request: Request):
     try:
         _service, action = _parse_wmts_request(request)
     except ValueError:
-        return Response(content="Unsupported service", status_code=400, media_type="text/plain")
+        return Response(content="Unsupported service", status_code=HttpStatus.BAD_REQUEST, media_type="text/plain")
 
     params = {key.lower(): value for key, value in request.query_params.items()}
     if action == "getcapabilities":
@@ -65,9 +66,9 @@ def wmts_kvp(request: Request):
             )
             return Response(content=tile, media_type=mime_type)
         except ValueError as exc:
-            return Response(content=str(exc), status_code=400, media_type="text/plain")
+            return Response(content=str(exc), status_code=HttpStatus.BAD_REQUEST, media_type="text/plain")
 
-    return Response(content="Unsupported WMTS request", status_code=400, media_type="text/plain")
+    return Response(content="Unsupported WMTS request", status_code=HttpStatus.BAD_REQUEST, media_type="text/plain")
 
 
 @router.get(f"{API_PREFIX}/wmts/{{identifier}}/{{tile_matrix_set}}/{{tile_matrix}}/{{tile_row}}/{{tile_col}}.{{ext}}")
@@ -94,7 +95,7 @@ def wmts_kvp_by_set(set_id: str, request: Request):
     try:
         _service, action = _parse_wmts_request(request)
     except ValueError:
-        return Response(content="Unsupported service", status_code=400, media_type="text/plain")
+        return Response(content="Unsupported service", status_code=HttpStatus.BAD_REQUEST, media_type="text/plain")
 
     params = {key.lower(): value for key, value in request.query_params.items()}
     if action == "getcapabilities":
@@ -113,9 +114,9 @@ def wmts_kvp_by_set(set_id: str, request: Request):
             )
             return Response(content=tile, media_type=mime_type)
         except ValueError as exc:
-            return Response(content=str(exc), status_code=400, media_type="text/plain")
+            return Response(content=str(exc), status_code=HttpStatus.BAD_REQUEST, media_type="text/plain")
 
-    return Response(content="Unsupported WMTS request", status_code=400, media_type="text/plain")
+    return Response(content="Unsupported WMTS request", status_code=HttpStatus.BAD_REQUEST, media_type="text/plain")
 
 
 @router.get(f"{API_PREFIX}/wmts/sets/{{set_id}}/{{identifier}}/{{tile_matrix_set}}/{{tile_matrix}}/{{tile_row}}/{{tile_col}}.{{ext}}")

@@ -4,6 +4,7 @@ from xml.etree import ElementTree
 from fastapi import HTTPException
 
 from ..config import TILE_SIZE, resolve_runtime_path
+from ..http_status import HttpStatus
 from .gpkg_reader import inspect_gpkg_source, read_exact_tile
 
 
@@ -70,7 +71,7 @@ def _bounds_contain(outer: tuple[float, float, float, float], inner: tuple[float
 def xyz_tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     matrix_size = 2**z
     if x < 0 or y < 0 or x >= matrix_size or y >= matrix_size:
-        raise HTTPException(status_code=404, detail="Requested tile is outside the EPSG:4326 XYZ matrix")
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail="Requested tile is outside the EPSG:4326 XYZ matrix")
 
     tile_span = (WGS84_HALF_WORLD * 2.0) / matrix_size
     min_x = GEODETIC_TILE_ORIGIN_X + (x * tile_span)

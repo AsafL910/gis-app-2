@@ -8,6 +8,7 @@ import sqlite3
 from fastapi import HTTPException
 
 from src.config import GPKG_DEBUG_LOGGING, load_wmts_gpkg_layers, resolve_data_path
+from src.http_status import HttpStatus
 from src.models.wmts import LayerCandidate, SkippedLayer, SpatialRefMetadata, TileMatrixMetadata, WmtsLayerMetadata
 
 
@@ -406,7 +407,7 @@ def get_wmts_layer(identifier: str, set_id: str | None = None) -> WmtsLayerMetad
             "available_layer_identifiers": [layer.identifier for layer in list_wmts_layers(set_id)],
         },
     )
-    raise HTTPException(status_code=404, detail=f'WMTS layer "{identifier}" was not found')
+    raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=f'WMTS layer "{identifier}" was not found')
 
 
 def render_wmts_tile(
@@ -430,7 +431,7 @@ def render_wmts_tile(
                 "set_id": set_id or "",
             },
         )
-        raise HTTPException(status_code=404, detail=f"Unsupported tile matrix set {tile_matrix_set}")
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=f"Unsupported tile matrix set {tile_matrix_set}")
 
     matrix = layer.tile_matrix_by_zoom(tile_matrix)
     if not matrix:
@@ -445,7 +446,7 @@ def render_wmts_tile(
                 "set_id": set_id or "",
             },
         )
-        raise HTTPException(status_code=404, detail=f"Tile matrix {tile_matrix} is not available for layer {identifier}")
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail=f"Tile matrix {tile_matrix} is not available for layer {identifier}")
 
     if tile_col < matrix.min_tile_col or tile_col > matrix.max_tile_col or tile_row < matrix.min_tile_row or tile_row > matrix.max_tile_row:
         logger.warning(
@@ -461,7 +462,7 @@ def render_wmts_tile(
                 "set_id": set_id or "",
             },
         )
-        raise HTTPException(status_code=404, detail="Requested tile is outside the available tile range")
+        raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail="Requested tile is outside the available tile range")
 
     with sqlite3.connect(layer.absolute_path) as conn:
         cursor = conn.cursor()
@@ -495,7 +496,7 @@ def render_wmts_tile(
             "set_id": set_id or "",
         },
     )
-    raise HTTPException(status_code=404, detail="Tile not found")
+    raise HTTPException(status_code=HttpStatus.NOT_FOUND, detail="Tile not found")
 
 
 def _tile_matrix_limits_xml(parent: Element, matrix: TileMatrixMetadata):
