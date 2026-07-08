@@ -20,7 +20,8 @@ pixi run dev
 Endpoints:
 
 - `GET /health`
-- `GET /api/hat/sets`
-- `GET /api/hat/sets/{setId}`
-- `GET /api/hat/sets/{setId}/tiles/{z}/{x}/{y}.png`
-- `GET /api/hat/sets/{setId}/tiles/EPSG4326/{z}/{x}/{y}.png`
+- `GET /api/v1/hat/sets`
+- `GET /api/v1/hat/sets/{setId}`
+- `GET /api/v1/hat/sets/{setId}/tiles/{z}/{x}/{y}.png`
+- `GET /api/v1/openapi.json`
+- `GET /api/v1/docs`

@@ -170,11 +170,14 @@ def load_wmts_gpkg_layers() -> list[GeoPackageLayerConfig]:
     elif fallback:
         entries = _parse_delimited_layer_entries(fallback)
     else:
-        entries = [
-            {"path": str(path.relative_to(DATA_DIR)).replace("\\", "/")}
-            for path in sorted(DATA_DIR.rglob("*.gpkg"))
-            if path.is_file()
-        ]
+        entries = []
+        for path in sorted(DATA_DIR.rglob("*.gpkg")):
+            if not path.is_file():
+                continue
+            rel_path = str(path.relative_to(DATA_DIR)).replace("\\", "/")
+            if rel_path.startswith("dtms/") or rel_path.startswith("sets/"):
+                continue
+            entries.append({"path": rel_path})
 
     configs: list[GeoPackageLayerConfig] = []
     used_identifiers: set[str] = set()

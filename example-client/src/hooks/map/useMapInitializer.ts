@@ -69,13 +69,13 @@ const useMapInitializer = () => {
   const [terrainSet, setTerrainSet] = useState<HatSetPayload | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string>("Loading published layers...");
   const [error, setError] = useState<string>("");
-  const { selectedLayerName, brightness, setAvailableLayers, setMapLayerName } = useMapStore();
+  const { selectedLayerId, brightness, setAvailableLayers, setMapLayerId } = useMapStore();
 
   const smoothedBrightness = useDebounce(brightness, 200);
   const selectedSet = useMemo(() => sets.find((item) => item.id === selectedSetId) ?? null, [selectedSetId, sets]);
   const selectedLayer = useMemo(
-    () => layers.find((layer) => layer.name === selectedLayerName) ?? layers[0] ?? null,
-    [layers, selectedLayerName],
+    () => layers.find((layer) => layer.identifier === selectedLayerId) ?? layers[0] ?? null,
+    [layers, selectedLayerId],
   );
   const selectedProjection = useMemo(
     () => normalizeProjectionCode(selectedLayer?.crs ?? selectedLayer?.tile_matrix_set?.supported_crs),
@@ -180,8 +180,12 @@ const useMapInitializer = () => {
           const nextLayers = payload.layers ?? [];
           setLayers(nextLayers);
           setTerrainSet(null);
-          setAvailableLayers(nextLayers.map((layer) => layer.name));
-          setMapLayerName(nextLayers.some((layer) => layer.name === selectedLayerName) ? selectedLayerName : (nextLayers[0]?.name ?? ""));
+          setAvailableLayers(nextLayers.map((layer) => ({ id: layer.identifier, label: `${layer.name} - ${layer.path}` })));
+          setMapLayerId(
+            nextLayers.some((layer) => layer.identifier === selectedLayerId)
+              ? selectedLayerId
+              : (nextLayers[0]?.identifier ?? ""),
+          );
           setLoadingMessage("");
           return;
         }
@@ -201,8 +205,12 @@ const useMapInitializer = () => {
 
         const nextLayers = layersResult.value.layers ?? [];
         setLayers(nextLayers);
-        setAvailableLayers(nextLayers.map((layer) => layer.name));
-        setMapLayerName(nextLayers.some((layer) => layer.name === selectedLayerName) ? selectedLayerName : (nextLayers[0]?.name ?? ""));
+        setAvailableLayers(nextLayers.map((layer) => ({ id: layer.identifier, label: `${layer.name} - ${layer.path}` })));
+        setMapLayerId(
+          nextLayers.some((layer) => layer.identifier === selectedLayerId)
+            ? selectedLayerId
+            : (nextLayers[0]?.identifier ?? ""),
+        );
 
         if (terrainResult.status === "fulfilled") {
           setTerrainSet(terrainResult.value);
@@ -221,7 +229,7 @@ const useMapInitializer = () => {
           setLayers([]);
           setTerrainSet(null);
           setAvailableLayers([]);
-          setMapLayerName("");
+          setMapLayerId("");
           setLoadingMessage("");
           setError(loadError instanceof Error ? loadError.message : "Unable to load map layers.");
         }
@@ -231,7 +239,7 @@ const useMapInitializer = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedLayerName, selectedSet?.name, selectedSetId, setAvailableLayers, setMapLayerName]);
+  }, [selectedLayerId, selectedSet?.name, selectedSetId, setAvailableLayers, setMapLayerId]);
 
   useEffect(() => {
     if (!map) {
@@ -248,6 +256,12 @@ const useMapInitializer = () => {
 
     if (!getProjection(selectedProjection)) {
       setError(`OpenLayers does not have a registered projection for ${selectedProjection}.`);
+      return;
+    }
+
+    const matrixSet = selectedLayer.matrix_set ?? selectedLayer.tile_matrix_set?.identifier;
+    if (!matrixSet) {
+      setError(`Layer "${selectedLayer.name}" is missing a WMTS matrix set identifier.`);
       return;
     }
 
@@ -275,7 +289,7 @@ const useMapInitializer = () => {
             .replace("/{z}/{y}/{x}.webp", "/{TileMatrix}/{TileRow}/{TileCol}.webp"),
         ),
         layer: selectedLayer.identifier,
-        matrixSet: selectedLayer.matrix_set || selectedLayer.tile_matrix_set?.identifier,
+        matrixSet,
         format: selectedLayer.format || "image/png",
         requestEncoding: "REST",
         tileGrid: buildTileGrid(selectedLayer),

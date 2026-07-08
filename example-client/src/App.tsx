@@ -30,7 +30,7 @@ export function App() {
     selectedProjection,
   });
   const { appSettings } = useAppSettingsStore();
-  const { availableLayers, selectedLayerName, brightness, setMapLayerName, setBrightness } = useMapStore();
+  const { availableLayers, selectedLayerId, brightness, setMapLayerId, setBrightness } = useMapStore();
 
   return (
     <div className="shell">
@@ -85,21 +85,21 @@ export function App() {
           <select
             id="layer-select"
             className="select"
-            value={selectedLayerName}
-            onChange={(event) => setMapLayerName(event.target.value)}
+            value={selectedLayerId}
+            onChange={(event) => setMapLayerId(event.target.value)}
             disabled={!availableLayers.length}
           >
             <option value="">Select a layer</option>
-            {availableLayers.map((layerName) => (
-              <option key={layerName} value={layerName}>
-                {layerName}
+            {availableLayers.map((layer) => (
+              <option key={layer.id} value={layer.id}>
+                {layer.label}
               </option>
             ))}
           </select>
 
           <div className="meta">
             <div>Available layers: {availableLayers.length}</div>
-            <div>Selected layer: {selectedLayerName || "None"}</div>
+            <div>Selected layer: {selectedLayerId || "None"}</div>
           </div>
         </section>
 
@@ -182,7 +182,7 @@ export function App() {
         <div className="stageHeader">
           <div>
             <p className="eyebrow">OpenLayers view</p>
-            <h2>{selectedSet?.name ?? selectedLayerName ?? "Waiting for layers"}</h2>
+            <h2>{selectedSet?.name ?? selectedLayer?.name ?? selectedLayerId ?? "Waiting for layers"}</h2>
           </div>
           <div className="badges">
             <span className="badge">{availableLayers.length} layers</span>

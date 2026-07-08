@@ -1,10 +1,15 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_MAP_BRIGHTNESS } from "commonUtils/MapUtils";
 
+type MapLayerOption = {
+  id: string;
+  label: string;
+};
+
 type MapStoreState = {
-  availableLayers: string[];
+  availableLayers: MapLayerOption[];
   brightness: number;
-  selectedLayerName: string;
+  selectedLayerId: string;
 };
 
 const listeners = new Set<() => void>();
@@ -12,7 +17,7 @@ const listeners = new Set<() => void>();
 let state: MapStoreState = {
   availableLayers: [],
   brightness: DEFAULT_MAP_BRIGHTNESS,
-  selectedLayerName: ""
+  selectedLayerId: ""
 };
 
 function emitChange() {
@@ -30,7 +35,7 @@ function getSnapshot() {
   return state;
 }
 
-function setAvailableLayers(availableLayers: string[]) {
+function setAvailableLayers(availableLayers: MapLayerOption[]) {
   if (state.availableLayers === availableLayers) {
     return;
   }
@@ -54,14 +59,14 @@ function setBrightness(brightness: number) {
   emitChange();
 }
 
-function setMapLayerName(selectedLayerName: string) {
-  if (state.selectedLayerName === selectedLayerName) {
+function setMapLayerId(selectedLayerId: string) {
+  if (state.selectedLayerId === selectedLayerId) {
     return;
   }
 
   state = {
     ...state,
-    selectedLayerName
+    selectedLayerId
   };
   emitChange();
 }
@@ -73,6 +78,6 @@ export default function useMapStore() {
     ...snapshot,
     setAvailableLayers,
     setBrightness,
-    setMapLayerName
+    setMapLayerId
   };
 }

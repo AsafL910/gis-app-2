@@ -150,6 +150,14 @@ def _published_name(raw_name: str) -> str:
     return normalized or raw_name.strip() or "layer"
 
 
+def _set_asset_identifier(asset) -> str:
+    base_identifier = _published_name(asset.original_name or Path(asset.relative_path).stem)
+    suffix = asset.id[-8:].lower().strip()
+    if not suffix:
+        return base_identifier
+    return f"{base_identifier}-{suffix}"
+
+
 def _iter_candidates(set_id: str | None = None) -> list[LayerCandidate]:
     candidates: list[LayerCandidate] = []
 
@@ -158,11 +166,11 @@ def _iter_candidates(set_id: str | None = None) -> list[LayerCandidate]:
 
         map_set = get_catalog_set_or_404(set_id)
         for asset in map_set.maps:
-            published_name = _published_name(asset.original_name or Path(asset.relative_path).stem)
+            published_name = _set_asset_identifier(asset)
             candidates.append(
                 LayerCandidate(
                     identifier=published_name,
-                    title=published_name,
+                    title=_published_name(asset.original_name or Path(asset.relative_path).stem),
                     relative_path=asset.relative_path,
                     absolute_path=asset.absolute_path,
                 )
@@ -182,7 +190,7 @@ def _iter_candidates(set_id: str | None = None) -> list[LayerCandidate]:
         published_name = _published_name(layer_config.title or Path(layer_config.relative_path).stem)
         candidates.append(
             LayerCandidate(
-                identifier=published_name,
+                identifier=layer_config.identifier,
                 title=published_name,
                 relative_path=layer_config.relative_path,
                 absolute_path=resolve_data_path(layer_config.relative_path),

@@ -207,7 +207,7 @@ export async function fetchAllLayers(): Promise<LayersPayload> {
 
 export async function fetchHatSet(setId: string): Promise<HatSetPayload> {
   return readJson<HatSetPayload>(
-    `${hatProviderBaseUrl}/api/hat/sets/${encodeURIComponent(setId)}`,
+    `${hatProviderBaseUrl}/api/v1/hat/sets/${encodeURIComponent(setId)}`,
     `Unable to load hat terrain tiles for set "${setId}".`
   );
 }
