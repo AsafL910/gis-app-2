@@ -19,6 +19,10 @@ function toFileSize(size: number | bigint): number {
   return Number(size);
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ENOENT";
+}
+
 async function walkForDtms(directoryPath: string, files: AvailableGpkgFile[]): Promise<void> {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
 
@@ -89,7 +93,16 @@ async function getSharedFileInfo(relativePath: string): Promise<{
     throw new Error("Only .gpkg files can be selected from the DTM folder.");
   }
 
-  const stats = await fs.stat(candidatePath);
+  let stats;
+  try {
+    stats = await fs.stat(candidatePath);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      throw new Error(`Shared file "${relativePath}" was not found.`);
+    }
+    throw error;
+  }
+
   if (!stats.isFile()) {
     throw new Error(`Shared file "${relativePath}" was not found.`);
   }
@@ -154,7 +167,7 @@ export async function storeSharedDtm(file: {
       throw new Error(`A shared GeoPackage named "${fileName}" already exists.`);
     }
   } catch (error) {
-    if (!(error instanceof Error) || "code" in error === false || error.code !== "ENOENT") {
+    if (!isMissingFileError(error)) {
       throw error;
     }
   }
@@ -185,7 +198,7 @@ export async function renameSharedDtm(relativePath: string, nextFileName: string
       throw new Error(`A shared GeoPackage named "${normalizedFileName}" already exists.`);
     }
   } catch (error) {
-    if (!(error instanceof Error) || "code" in error === false || error.code !== "ENOENT") {
+    if (!isMissingFileError(error)) {
       throw error;
     }
   }

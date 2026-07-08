@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Request
 
-from src.config import PUBLIC_BASE_URL
+from src.config import API_PREFIX, PUBLIC_BASE_URL
 from src.services.catalog import list_catalog_sets
+from src.schemas.catalog import CatalogLayersResponseSchema, CatalogResponseSchema
 
 
-router = APIRouter(prefix="/api", tags=["Catalog"])
+router = APIRouter(prefix=API_PREFIX, tags=["Catalog"])
 
 
 def _base_url(request: Request) -> str:
@@ -13,7 +14,7 @@ def _base_url(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
-@router.get("/sets")
+@router.get("/sets", response_model=CatalogResponseSchema)
 def list_sets():
     sets = list_catalog_sets()
     return {
@@ -47,14 +48,14 @@ def list_sets():
     }
 
 
-@router.get("/sets/{set_id}/layers")
+@router.get("/sets/{set_id}/layers", response_model=CatalogLayersResponseSchema)
 def list_layers_for_set(set_id: str, request: Request):
     from src.services.wmts import list_wmts_payload
 
     return list_wmts_payload(_base_url(request), set_id)
 
 
-@router.get("/layers")
+@router.get("/layers", response_model=CatalogLayersResponseSchema)
 def list_layers(request: Request):
     from src.services.wmts import list_wmts_payload
 

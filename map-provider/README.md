@@ -58,13 +58,14 @@ Expected inputs:
 
 Primary endpoints:
 
-- `GET /api/sets`
-- `GET /api/layers`
-- `GET /api/sets/{setId}/layers`
-- `GET /wmts?SERVICE=WMTS&REQUEST=GetCapabilities`
-- `GET /api/wmts/sets/{setId}?SERVICE=WMTS&REQUEST=GetCapabilities`
-- `GET /wmts/{layerId}/{tileMatrixSet}/{tileMatrix}/{tileRow}/{tileCol}.{ext}`
-- `GET /api/wmts/sets/{setId}/{layerId}/{tileMatrixSet}/{tileMatrix}/{tileRow}/{tileCol}.{ext}`
+- `GET /api/v1/sets`
+- `GET /api/v1/layers`
+- `GET /api/v1/sets/{setId}/layers`
+- `GET /api/v1/wmts?SERVICE=WMTS&REQUEST=GetCapabilities`
+- `GET /api/v1/wmts/sets/{setId}?SERVICE=WMTS&REQUEST=GetCapabilities`
+- `GET /api/v1/wmts/{layerId}/{tileMatrixSet}/{tileMatrix}/{tileRow}/{tileCol}.{ext}`
+- `GET /api/v1/wmts/sets/{setId}/{layerId}/{tileMatrixSet}/{tileMatrix}/{tileRow}/{tileCol}.{ext}`
+- `GET /api/v1/docs`
 
 ## Debug Logging
 

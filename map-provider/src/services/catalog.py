@@ -1,18 +1,7 @@
-from dataclasses import dataclass
-
 from fastapi import HTTPException
 
-from src.config import MapSetRecord, StoredAssetRecord, load_map_sets
-
-
-@dataclass(frozen=True)
-class CatalogSet:
-    id: str
-    name: str
-    description: str
-    maps: list[StoredAssetRecord]
-    dtm_layers: list[StoredAssetRecord]
-    vrt_path: str
+from src.config import load_map_sets
+from src.models.catalog import CatalogSet
 
 
 def list_catalog_sets() -> list[CatalogSet]:

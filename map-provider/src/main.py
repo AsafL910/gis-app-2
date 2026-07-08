@@ -3,10 +3,10 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.config import FRONTEND_DIST_DIR, GPKG_DEBUG_LOGGING
+from src.config import API_PREFIX, FRONTEND_DIST_DIR, GPKG_DEBUG_LOGGING
 from src.routes.catalog import router as catalog_router
 from src.services.catalog import list_catalog_sets
 from src.services.wmts import list_skipped_wmts_layers, list_wmts_layers
@@ -20,6 +20,9 @@ logger.disabled = not GPKG_DEBUG_LOGGING
 app = FastAPI(
     title="Map Server",
     description="Set-aware GeoPackage WMTS service with OpenLayers demo",
+    docs_url=f"{API_PREFIX}/docs",
+    redoc_url=None,
+    openapi_url=f"{API_PREFIX}/openapi.json",
 )
 
 app.add_middleware(
@@ -114,9 +117,16 @@ def root():
     return {
         "service": "map-provider",
         "demoUrl": "/demo",
-        "catalogUrl": "/api/sets",
+        "swaggerUrl": f"{API_PREFIX}/docs",
+        "openApiUrl": f"{API_PREFIX}/openapi.json",
+        "catalogUrl": f"{API_PREFIX}/sets",
         "healthUrl": "/health"
     }
+
+
+@app.get("/swagger", include_in_schema=False)
+def swagger():
+    return RedirectResponse(url=f"{API_PREFIX}/docs")
 
 
 @app.get("/demo")

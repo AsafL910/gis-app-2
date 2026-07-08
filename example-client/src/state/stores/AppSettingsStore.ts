@@ -16,7 +16,7 @@ let state: AppSettingsState = {
   appSettings: {
     ENVIRONMENT: import.meta.env.MODE === "development" ? "Developement" : "Production",
     MAP_URL:
-      import.meta.env.VITE_MAP_URL || "http://localhost:8003/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
+      import.meta.env.VITE_MAP_URL || "http://localhost:8003/api/v1/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
     STATION: import.meta.env.VITE_STATION || ""
   }
 };

@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from functools import lru_cache
 import logging
 from pathlib import Path
@@ -9,97 +8,12 @@ import sqlite3
 from fastapi import HTTPException
 
 from src.config import GPKG_DEBUG_LOGGING, load_wmts_gpkg_layers, resolve_data_path
+from src.models.wmts import LayerCandidate, SkippedLayer, SpatialRefMetadata, TileMatrixMetadata, WmtsLayerMetadata
 
 
 OGC_PIXEL_SIZE = 0.00028
 logger = logging.getLogger("map_provider.wmts")
 logger.disabled = not GPKG_DEBUG_LOGGING
-
-
-@dataclass(frozen=True)
-class SpatialRefMetadata:
-    srs_id: int
-    organization: str
-    organization_coordsys_id: int
-    definition: str
-
-    @property
-    def supported_crs(self) -> str:
-        if self.organization.upper() == "EPSG" and self.organization_coordsys_id > 0:
-            return f"urn:ogc:def:crs:EPSG::{self.organization_coordsys_id}"
-        if self.organization and self.organization_coordsys_id > 0:
-            return f"{self.organization}:{self.organization_coordsys_id}"
-        return self.definition or str(self.srs_id)
-
-
-@dataclass(frozen=True)
-class TileMatrixMetadata:
-    zoom_level: int
-    matrix_width: int
-    matrix_height: int
-    tile_width: int
-    tile_height: int
-    pixel_x_size: float
-    pixel_y_size: float
-    min_tile_col: int
-    max_tile_col: int
-    min_tile_row: int
-    max_tile_row: int
-
-    @property
-    def scale_denominator(self) -> float:
-        return self.pixel_x_size / OGC_PIXEL_SIZE
-
-
-@dataclass(frozen=True)
-class WmtsLayerMetadata:
-    identifier: str
-    title: str
-    relative_path: str
-    absolute_path: Path
-    table_name: str
-    content_identifier: str
-    native_bounds: tuple[float, float, float, float]
-    bounds_4326: tuple[float, float, float, float] | None
-    matrix_set_bounds: tuple[float, float, float, float]
-    spatial_ref: SpatialRefMetadata
-    tile_matrices: tuple[TileMatrixMetadata, ...]
-    mime_type: str
-    file_extension: str
-
-    @property
-    def matrix_set_identifier(self) -> str:
-        return f"matrixset_{self.identifier}"
-
-    @property
-    def min_zoom(self) -> int:
-        return self.tile_matrices[0].zoom_level
-
-    @property
-    def max_zoom(self) -> int:
-        return self.tile_matrices[-1].zoom_level
-
-    def tile_matrix_by_zoom(self, zoom_level: int) -> TileMatrixMetadata | None:
-        for matrix in self.tile_matrices:
-            if matrix.zoom_level == zoom_level:
-                return matrix
-        return None
-
-
-@dataclass(frozen=True)
-class SkippedLayer:
-    identifier: str
-    title: str
-    relative_path: str
-    reason: str
-
-
-@dataclass(frozen=True)
-class LayerCandidate:
-    identifier: str
-    title: str
-    relative_path: str
-    absolute_path: Path
 
 
 def _candidate_log_context(candidate: LayerCandidate) -> dict[str, str]:
@@ -614,7 +528,7 @@ def build_wmts_capabilities_xml(base_url: str, set_id: str | None = None) -> str
     SubElement(service_identification, "{http://www.opengis.net/ows/1.1}ServiceTypeVersion").text = "1.0.0"
 
     operations_metadata = SubElement(capabilities, "{http://www.opengis.net/ows/1.1}OperationsMetadata")
-    kvp_url = f"{base_url}/wmts?" if set_id is None else f"{base_url}/api/wmts/sets/{quote(set_id, safe='')}?"
+    kvp_url = f"{base_url}/api/v1/wmts?" if set_id is None else f"{base_url}/api/v1/wmts/sets/{quote(set_id, safe='')}?"
     for operation_name in ["GetCapabilities", "GetTile"]:
         operation = SubElement(operations_metadata, "{http://www.opengis.net/ows/1.1}Operation", {"name": operation_name})
         dcp = SubElement(operation, "{http://www.opengis.net/ows/1.1}DCP")
@@ -649,9 +563,9 @@ def build_wmts_capabilities_xml(base_url: str, set_id: str | None = None) -> str
                 "format": layer.mime_type,
                 "resourceType": "tile",
                 "template": (
-                    f"{base_url}/wmts/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.{layer.file_extension}"
+                    f"{base_url}/api/v1/wmts/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.{layer.file_extension}"
                     if set_id is None
-                    else f"{base_url}/api/wmts/sets/{quote(set_id, safe='')}/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.{layer.file_extension}"
+                    else f"{base_url}/api/v1/wmts/sets/{quote(set_id, safe='')}/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{TileMatrix}}/{{TileRow}}/{{TileCol}}.{layer.file_extension}"
                 ),
             },
         )
@@ -692,11 +606,11 @@ def list_wmts_payload(base_url: str, set_id: str | None = None) -> dict:
     layers = list_wmts_layers(set_id)
     skipped_layers = list_skipped_wmts_layers(set_id)
     capabilities_url = (
-        "/wmts?SERVICE=WMTS&REQUEST=GetCapabilities"
+        "/api/v1/wmts?SERVICE=WMTS&REQUEST=GetCapabilities"
         if set_id is None
-        else f"/api/wmts/sets/{quote(set_id, safe='')}?SERVICE=WMTS&REQUEST=GetCapabilities"
+        else f"/api/v1/wmts/sets/{quote(set_id, safe='')}?SERVICE=WMTS&REQUEST=GetCapabilities"
     )
-    rest_base = "/wmts" if set_id is None else f"/api/wmts/sets/{quote(set_id, safe='')}"
+    rest_base = "/api/v1/wmts" if set_id is None else f"/api/v1/wmts/sets/{quote(set_id, safe='')}"
     return {
         "layers": [
             {
@@ -705,9 +619,9 @@ def list_wmts_payload(base_url: str, set_id: str | None = None) -> dict:
                 "path": layer.relative_path,
                 "provider": "wmts",
                 "tile_url": (
-                    f"/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT={quote(layer.mime_type, safe='')}&TILEMATRIXSET={quote(layer.matrix_set_identifier, safe='')}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
+                    f"/api/v1/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT={quote(layer.mime_type, safe='')}&TILEMATRIXSET={quote(layer.matrix_set_identifier, safe='')}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
                     if set_id is None
-                    else f"/api/wmts/sets/{quote(set_id, safe='')}?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT={quote(layer.mime_type, safe='')}&TILEMATRIXSET={quote(layer.matrix_set_identifier, safe='')}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
+                    else f"/api/v1/wmts/sets/{quote(set_id, safe='')}?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={quote(layer.identifier, safe='')}&STYLE=default&FORMAT={quote(layer.mime_type, safe='')}&TILEMATRIXSET={quote(layer.matrix_set_identifier, safe='')}&TILEMATRIX={{z}}&TILEROW={{y}}&TILECOL={{x}}"
                 ),
                 "rest_tile_url": f"{rest_base}/{quote(layer.identifier, safe='')}/{quote(layer.matrix_set_identifier, safe='')}/{{z}}/{{y}}/{{x}}.{layer.file_extension}",
                 "capabilities_url": capabilities_url,
@@ -765,7 +679,7 @@ def list_wmts_payload(base_url: str, set_id: str | None = None) -> dict:
             "name": "map-server",
             "capabilities_url": capabilities_url,
             "demo_url": "/demo",
-            "kvp_url": "/wmts?" if set_id is None else f"/api/wmts/sets/{quote(set_id, safe='')}?",
+            "kvp_url": "/api/v1/wmts?" if set_id is None else f"/api/v1/wmts/sets/{quote(set_id, safe='')}?",
             "base_url": base_url,
         },
     }

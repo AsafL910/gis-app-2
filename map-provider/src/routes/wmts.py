@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from src.config import PUBLIC_BASE_URL
+from src.config import API_PREFIX, PUBLIC_BASE_URL
 from src.services.wmts import build_wmts_capabilities_xml, render_wmts_tile
 
 
@@ -25,13 +25,13 @@ def _parse_wmts_request(request: Request) -> tuple[str, str]:
     return service, action
 
 
-@router.get("/wmts/WMTSCapabilities.xml")
+@router.get(f"{API_PREFIX}/wmts/WMTSCapabilities.xml")
 def wmts_capabilities(request: Request):
     xml = build_wmts_capabilities_xml(_base_url(request))
     return Response(content=xml, media_type="application/xml")
 
 
-@router.get("/wmts")
+@router.get(f"{API_PREFIX}/wmts")
 def wmts_kvp(request: Request):
     try:
         _service, action = _parse_wmts_request(request)
@@ -56,7 +56,7 @@ def wmts_kvp(request: Request):
     return Response(content="Unsupported WMTS request", status_code=400, media_type="text/plain")
 
 
-@router.get("/wmts/{identifier}/{tile_matrix_set}/{tile_matrix}/{tile_row}/{tile_col}.{ext}")
+@router.get(f"{API_PREFIX}/wmts/{{identifier}}/{{tile_matrix_set}}/{{tile_matrix}}/{{tile_row}}/{{tile_col}}.{{ext}}")
 def wmts_rest_tile(
     identifier: str,
     tile_matrix_set: str,
@@ -69,13 +69,13 @@ def wmts_rest_tile(
     return Response(content=tile, media_type=mime_type)
 
 
-@router.get("/api/wmts/sets/{set_id}/WMTSCapabilities.xml")
+@router.get(f"{API_PREFIX}/wmts/sets/{{set_id}}/WMTSCapabilities.xml")
 def wmts_capabilities_by_set(set_id: str, request: Request):
     xml = build_wmts_capabilities_xml(_base_url(request), set_id)
     return Response(content=xml, media_type="application/xml")
 
 
-@router.get("/api/wmts/sets/{set_id}")
+@router.get(f"{API_PREFIX}/wmts/sets/{{set_id}}")
 def wmts_kvp_by_set(set_id: str, request: Request):
     try:
         _service, action = _parse_wmts_request(request)
@@ -101,7 +101,7 @@ def wmts_kvp_by_set(set_id: str, request: Request):
     return Response(content="Unsupported WMTS request", status_code=400, media_type="text/plain")
 
 
-@router.get("/api/wmts/sets/{set_id}/{identifier}/{tile_matrix_set}/{tile_matrix}/{tile_row}/{tile_col}.{ext}")
+@router.get(f"{API_PREFIX}/wmts/sets/{{set_id}}/{{identifier}}/{{tile_matrix_set}}/{{tile_matrix}}/{{tile_row}}/{{tile_col}}.{{ext}}")
 def wmts_rest_tile_by_set(
     set_id: str,
     identifier: str,

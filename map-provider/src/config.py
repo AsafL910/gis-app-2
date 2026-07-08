@@ -1,15 +1,16 @@
 import json
 import os
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
+from src.models.catalog import GeoPackageLayerConfig, MapSetRecord, StoredAssetRecord
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parents[2] / "data"))).resolve()
 FRONTEND_DIST_DIR = Path(os.environ.get("FRONTEND_DIST_DIR", str(Path(__file__).resolve().parents[1] / "frontend-dist"))).resolve()
 SETS_MANIFEST_PATH = DATA_DIR / "sets.json"
 WMTS_TILE_SIZE = 256
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+API_PREFIX = "/api/v1"
 
 
 def _parse_bool_env(name: str, default: bool = False) -> bool:
@@ -20,33 +21,6 @@ def _parse_bool_env(name: str, default: bool = False) -> bool:
 
 
 GPKG_DEBUG_LOGGING = _parse_bool_env("GPKG_DEBUG_LOGGING", default=False)
-
-
-@dataclass(frozen=True)
-class GeoPackageLayerConfig:
-    identifier: str
-    title: str
-    relative_path: str
-
-
-@dataclass(frozen=True)
-class StoredAssetRecord:
-    id: str
-    original_name: str
-    stored_name: str
-    relative_path: str
-    absolute_path: Path
-    size: int
-
-
-@dataclass(frozen=True)
-class MapSetRecord:
-    id: str
-    name: str
-    description: str
-    maps: list[StoredAssetRecord]
-    dtm_layers: list[StoredAssetRecord]
-    vrt_path: str
 
 
 def _slugify_set_name(value: str) -> str:

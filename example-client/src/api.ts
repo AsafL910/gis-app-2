@@ -154,7 +154,7 @@ function parseCapabilitiesXml(xmlText: string): LayersPayload {
           .replace("{TileMatrix}", "{z}")
           .replace("{TileRow}", "{y}")
           .replace("{TileCol}", "{x}"),
-        capabilities_url: "/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
+        capabilities_url: "/api/v1/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
         demo_url: "",
         source_modes: ["rest"],
         format,
@@ -182,27 +182,27 @@ function parseCapabilitiesXml(xmlText: string): LayersPayload {
     skipped_layers: [],
     service: {
       name: "map-server",
-      capabilities_url: "/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
+      capabilities_url: "/api/v1/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
       demo_url: "",
-      kvp_url: "/wmts?",
+      kvp_url: "/api/v1/wmts?",
       base_url: ""
     }
   };
 }
 
 export async function fetchSets(): Promise<SetsPayload> {
-  return readJson<SetsPayload>(`${mapProviderBaseUrl}/api/sets`, "Unable to load map sets from map-provider.");
+  return readJson<SetsPayload>(`${mapProviderBaseUrl}/api/v1/sets`, "Unable to load map sets from map-provider.");
 }
 
 export async function fetchLayersForSet(setId: string): Promise<LayersPayload> {
   return readJson<LayersPayload>(
-    `${mapProviderBaseUrl}/api/sets/${encodeURIComponent(setId)}/layers`,
+    `${mapProviderBaseUrl}/api/v1/sets/${encodeURIComponent(setId)}/layers`,
     `Unable to load WMTS layers for set "${setId}".`
   );
 }
 
 export async function fetchAllLayers(): Promise<LayersPayload> {
-  return readJson<LayersPayload>(`${mapProviderBaseUrl}/api/layers`, "Unable to load global WMTS layers.");
+  return readJson<LayersPayload>(`${mapProviderBaseUrl}/api/v1/layers`, "Unable to load global WMTS layers.");
 }
 
 export async function fetchHatSet(setId: string): Promise<HatSetPayload> {
