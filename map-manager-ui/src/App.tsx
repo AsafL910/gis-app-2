@@ -40,23 +40,7 @@ import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
-import {
-  addAssetsToSet,
-  createSet,
-  deleteSet,
-  deleteSharedDtm,
-  deleteSharedGpkg,
-  fetchAvailableDtms,
-  fetchAvailableGpkgs,
-  fetchSets,
-  getSharedDtmDownloadUrl,
-  getSharedGpkgDownloadUrl,
-  renameSharedDtm,
-  renameSharedGpkg,
-  updateDtmOrder,
-  uploadSharedDtm,
-  uploadSharedGpkg
-} from "./api";
+import { ApiError, DtMsService, MapsService, OpenAPI, SetsService } from "./api/generated/openapi/index.js";
 import type { AvailableGpkgFile, MapSetRecord } from "./types";
 
 const NAV_WIDTH = 280;
@@ -112,6 +96,191 @@ function toExistingDraft(file: AvailableGpkgFile): DraftAsset {
     source: "existing",
     relativePath: file.relativePath
   };
+}
+
+OpenAPI.BASE = "";
+
+function normalizeApiError(error: unknown, fallbackMessage: string): Error {
+  if (error instanceof ApiError) {
+    const body = error.body as unknown;
+
+    if (body && typeof body === "object" && "error" in body && typeof (body as { error?: unknown }).error === "string") {
+      return new Error((body as { error: string }).error);
+    }
+
+    if (typeof body === "string" && body.trim()) {
+      return new Error(body);
+    }
+
+    return new Error(error.message || fallbackMessage);
+  }
+
+  return error instanceof Error ? error : new Error(fallbackMessage);
+}
+
+async function fetchSets(): Promise<MapSetRecord[]> {
+  try {
+    const payload = await SetsService.listSets();
+    return payload.sets;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to load map sets.");
+  }
+}
+
+async function fetchAvailableGpkgs(): Promise<AvailableGpkgFile[]> {
+  try {
+    const payload = await MapsService.listSharedGpkgs();
+    return payload.files;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to load available maps.");
+  }
+}
+
+async function fetchAvailableDtms(): Promise<AvailableGpkgFile[]> {
+  try {
+    const payload = await DtMsService.listSharedDtms();
+    return payload.files;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to load available DTMs.");
+  }
+}
+
+async function uploadSharedGpkg(file: File): Promise<AvailableGpkgFile> {
+  try {
+    const payload = await MapsService.uploadSharedGpkg({ formData: { gpkg: file } });
+    return payload.file;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to upload map GeoPackage to the shared data folder.");
+  }
+}
+
+async function uploadSharedDtm(file: File): Promise<AvailableGpkgFile> {
+  try {
+    const payload = await DtMsService.uploadSharedDtm({ formData: { dtm: file } });
+    return payload.file;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to upload DTM GeoPackage to the shared data folder.");
+  }
+}
+
+async function renameSharedGpkg(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
+  try {
+    const payload = await MapsService.renameSharedGpkg({
+      requestBody: { relativePath, nextFileName }
+    });
+    return payload.file;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to rename shared GeoPackage.");
+  }
+}
+
+async function deleteSharedGpkg(relativePath: string): Promise<void> {
+  try {
+    await MapsService.deleteSharedGpkg({ path: relativePath });
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to delete shared GeoPackage.");
+  }
+}
+
+function getSharedGpkgDownloadUrl(relativePath: string): string {
+  return `/api/maps/download?path=${encodeURIComponent(relativePath)}`;
+}
+
+async function renameSharedDtm(relativePath: string, nextFileName: string): Promise<AvailableGpkgFile> {
+  try {
+    const payload = await DtMsService.renameSharedDtm({
+      requestBody: { relativePath, nextFileName }
+    });
+    return payload.file;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to rename shared GeoPackage.");
+  }
+}
+
+async function deleteSharedDtm(relativePath: string): Promise<void> {
+  try {
+    await DtMsService.deleteSharedDtm({ path: relativePath });
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to delete shared GeoPackage.");
+  }
+}
+
+function getSharedDtmDownloadUrl(relativePath: string): string {
+  return `/api/dtms/download?path=${encodeURIComponent(relativePath)}`;
+}
+
+async function createSet(input: {
+  name: string;
+  description: string;
+  maps: File[];
+  dtms: File[];
+  selectedMapPaths: string[];
+  selectedDtmPaths: string[];
+  dtmSelectionOrder: Array<{ source: "upload" | "existing"; relativePath?: string }>;
+}): Promise<MapSetRecord> {
+  try {
+    const payload = await SetsService.createSet({
+      formData: {
+        name: input.name,
+        description: input.description || undefined,
+        maps: input.maps,
+        dtms: input.dtms,
+        selectedMapPaths: input.selectedMapPaths,
+        selectedDtmPaths: input.selectedDtmPaths,
+        dtmSelectionOrder: input.dtmSelectionOrder
+      }
+    });
+    return payload;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to create map set.");
+  }
+}
+
+async function addAssetsToSet(
+  setId: string,
+  input: {
+    maps: File[];
+    dtms: File[];
+    selectedMapPaths: string[];
+    selectedDtmPaths: string[];
+    dtmSelectionOrder: Array<{ source: "upload" | "existing"; relativePath?: string }>;
+  }
+): Promise<MapSetRecord> {
+  try {
+    const payload = await SetsService.appendAssetsToSet({
+      id: setId,
+      formData: {
+        maps: input.maps,
+        dtms: input.dtms,
+        selectedMapPaths: input.selectedMapPaths,
+        selectedDtmPaths: input.selectedDtmPaths,
+        dtmSelectionOrder: input.dtmSelectionOrder
+      }
+    });
+    return payload;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to add assets to the selected map set.");
+  }
+}
+
+async function updateDtmOrder(setId: string, dtmIds: string[]): Promise<MapSetRecord> {
+  try {
+    const payload = await SetsService.reorderDtmLayers({
+      id: setId,
+      requestBody: { dtmIds }
+    });
+    return payload;
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to update DTM order.");
+  }
+}
+
+async function deleteSet(setId: string): Promise<void> {
+  try {
+    await SetsService.deleteSet({ id: setId });
+  } catch (error) {
+    throw normalizeApiError(error, "Unable to delete map set.");
+  }
 }
 
 export function App() {
