@@ -1,7 +1,7 @@
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.responses import Response
 
-from .config import RGB_ELEVATION_FORMULA, TILE_SIZE
+from .config import RGB_ELEVATION_FORMULA, TILE_SIZE, SERVICE_VERSION
 from .storage import get_map_set, list_map_sets
 from .models import GpkgSourceMetadata
 from .services.gpkg_reader import inspect_sources
@@ -17,7 +17,7 @@ LEGACY_HAT_PREFIX = "/api/hat"
 
 app = FastAPI(
     title="Hat Provider",
-    version="1.0.0",
+    version=SERVICE_VERSION,
     docs_url=f"{API_PREFIX}/docs",
     openapi_url=f"{API_PREFIX}/openapi.json",
     redoc_url=None,
@@ -187,23 +187,27 @@ def legacy_list_sets() -> dict[str, list[dict[str, object]]]:
 def get_set(set_id: str) -> dict[str, object]:
     try:
         return _get_set_impl(set_id)
-    except Exception as exc:
+    except (KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @legacy_router.get("/sets/{set_id}")
 def legacy_get_set(set_id: str) -> dict[str, object]:
     try:
         return _get_set_impl(set_id)
-    except Exception as exc:
+    except (KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @api_router.get("/sets/{set_id}/tiles/{z}/{x}/{y}.png")
 def terrain_tile(set_id: str, z: int, x: int, y: int):
     try:
         return _tile_impl(set_id, z, x, y)
-    except Exception as exc:
+    except (KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
@@ -211,7 +215,7 @@ def terrain_tile(set_id: str, z: int, x: int, y: int):
 def legacy_terrain_tile(set_id: str, z: int, x: int, y: int):
     try:
         return _tile_impl(set_id, z, x, y)
-    except Exception as exc:
+    except (KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
@@ -219,7 +223,7 @@ def legacy_terrain_tile(set_id: str, z: int, x: int, y: int):
 def legacy_terrain_tile_4326(set_id: str, z: int, x: int, y: int):
     try:
         return _tile_impl(set_id, z, x, y)
-    except Exception as exc:
+    except (KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 

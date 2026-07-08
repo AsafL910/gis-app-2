@@ -1,16 +1,14 @@
 import type { HatSetPayload, LayerPayload, LayersPayload, SetsPayload } from "./types";
+import { OpenAPI as MapProviderOpenAPI } from "./api/generated/map-provider/core/OpenAPI";
+import { OpenAPI as HatProviderOpenAPI } from "./api/generated/hat-provider/core/OpenAPI";
+import { CatalogService } from "./api/generated/map-provider/services/CatalogService";
+import { HatService } from "./api/generated/hat-provider/services/HatService";
 
 const mapProviderBaseUrl = import.meta.env.VITE_MAP_PROVIDER_BASE_URL || "/map-provider-api";
 const hatProviderBaseUrl = import.meta.env.VITE_HAT_PROVIDER_BASE_URL || "/hat-provider-api";
 
-async function readJson<T>(url: string, message: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
-}
+MapProviderOpenAPI.BASE = mapProviderBaseUrl;
+HatProviderOpenAPI.BASE = hatProviderBaseUrl;
 
 function toProxyRelativeUrl(value: string): string {
   if (!value) {
@@ -52,7 +50,7 @@ function parseBoundingBox(box?: Element | null): [number, number, number, number
   return [lower[0], lower[1], upper[0], upper[1]];
 }
 
-function parseCapabilitiesXml(xmlText: string): LayersPayload {
+export function parseCapabilitiesXml(xmlText: string): LayersPayload {
   const parser = new DOMParser();
   const xml = parser.parseFromString(xmlText, "application/xml");
   const matrixSetElements = Array.from(xml.getElementsByTagNameNS("*", "TileMatrixSet"));
@@ -185,31 +183,31 @@ function parseCapabilitiesXml(xmlText: string): LayersPayload {
       capabilities_url: "/api/v1/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
       demo_url: "",
       kvp_url: "/api/v1/wmts?",
-      base_url: ""
+      base_url: "",
+      matrix_set: "",
+      crs: ""
     }
   };
 }
 
 export async function fetchSets(): Promise<SetsPayload> {
-  return readJson<SetsPayload>(`${mapProviderBaseUrl}/api/v1/sets`, "Unable to load map sets from map-provider.");
+  const result = await CatalogService.listSetsApiV1SetsGet();
+  return result as SetsPayload;
 }
 
 export async function fetchLayersForSet(setId: string): Promise<LayersPayload> {
-  return readJson<LayersPayload>(
-    `${mapProviderBaseUrl}/api/v1/sets/${encodeURIComponent(setId)}/layers`,
-    `Unable to load WMTS layers for set "${setId}".`
-  );
+  const result = await CatalogService.listLayersForSetApiV1SetsSetIdLayersGet({ setId });
+  return result as LayersPayload;
 }
 
 export async function fetchAllLayers(): Promise<LayersPayload> {
-  return readJson<LayersPayload>(`${mapProviderBaseUrl}/api/v1/layers`, "Unable to load global WMTS layers.");
+  const result = await CatalogService.listLayersApiV1LayersGet();
+  return result as LayersPayload;
 }
 
 export async function fetchHatSet(setId: string): Promise<HatSetPayload> {
-  return readJson<HatSetPayload>(
-    `${hatProviderBaseUrl}/api/v1/hat/sets/${encodeURIComponent(setId)}`,
-    `Unable to load hat terrain tiles for set "${setId}".`
-  );
+  const result = await HatService.getSetApiV1HatSetsSetIdGet({ setId });
+  return result as unknown as HatSetPayload;
 }
 
 export function resolveMapProviderUrl(path: string): string {

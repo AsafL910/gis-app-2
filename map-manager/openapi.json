@@ -1,0 +1,1937 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Map Manager API",
+    "version": "0.1.0",
+    "description": "API documentation for the map-manager service."
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Service status checks"
+    },
+    {
+      "name": "Sets",
+      "description": "Map set lifecycle and asset management"
+    },
+    {
+      "name": "Maps",
+      "description": "Shared map GeoPackage library endpoints"
+    },
+    {
+      "name": "DTMs",
+      "description": "Shared DTM GeoPackage library endpoints"
+    }
+  ],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/maps": {
+      "get": {
+        "tags": [
+          "Maps"
+        ],
+        "summary": "List shared maps",
+        "operationId": "listSharedGpkgs",
+        "responses": {
+          "200": {
+            "description": "Shared GeoPackages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "relativePath": {
+                            "type": "string",
+                            "example": "dtms/israel_top.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/dtms/israel_top.gpkg"
+                          },
+                          "fileName": {
+                            "type": "string",
+                            "example": "israel_top.gpkg"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 16777216
+                          },
+                          "modifiedAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          },
+                          "referencedBySets": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "example": "Set A"
+                            },
+                            "example": [],
+                            "description": "Map sets that reference this file"
+                          },
+                          "managedBySet": {
+                            "type": "boolean",
+                            "example": true,
+                            "description": "Whether the file lives inside a managed set folder"
+                          }
+                        },
+                        "required": [
+                          "relativePath",
+                          "absolutePath",
+                          "fileName",
+                          "size",
+                          "modifiedAt",
+                          "referencedBySets",
+                          "managedBySet"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "files"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Maps"
+        ],
+        "summary": "Rename a shared map",
+        "operationId": "renameSharedGpkg",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "relativePath": {
+                    "type": "string",
+                    "example": "dtms/israel_top.gpkg"
+                  },
+                  "nextFileName": {
+                    "type": "string",
+                    "example": "israel_top_renamed.gpkg"
+                  }
+                },
+                "required": [
+                  "relativePath",
+                  "nextFileName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated file metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "relativePath": {
+                          "type": "string",
+                          "example": "dtms/israel_top.gpkg"
+                        },
+                        "absolutePath": {
+                          "type": "string",
+                          "example": "D:/data/dtms/israel_top.gpkg"
+                        },
+                        "fileName": {
+                          "type": "string",
+                          "example": "israel_top.gpkg"
+                        },
+                        "size": {
+                          "type": "number",
+                          "example": 16777216
+                        },
+                        "modifiedAt": {
+                          "type": "string",
+                          "example": "2026-06-09T09:00:00.000Z"
+                        },
+                        "referencedBySets": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "example": "Set A"
+                          },
+                          "example": [],
+                          "description": "Map sets that reference this file"
+                        },
+                        "managedBySet": {
+                          "type": "boolean",
+                          "example": true,
+                          "description": "Whether the file lives inside a managed set folder"
+                        }
+                      },
+                      "required": [
+                        "relativePath",
+                        "absolutePath",
+                        "fileName",
+                        "size",
+                        "modifiedAt",
+                        "referencedBySets",
+                        "managedBySet"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "file"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Maps"
+        ],
+        "summary": "Delete a shared map",
+        "operationId": "deleteSharedGpkg",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "maps/israel_rgb.gpkg"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted successfully"
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/maps/upload": {
+      "post": {
+        "tags": [
+          "Maps"
+        ],
+        "summary": "Upload a shared map",
+        "operationId": "uploadSharedGpkg",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "gpkg": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "gpkg"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Uploaded file metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "relativePath": {
+                          "type": "string",
+                          "example": "dtms/israel_top.gpkg"
+                        },
+                        "absolutePath": {
+                          "type": "string",
+                          "example": "D:/data/dtms/israel_top.gpkg"
+                        },
+                        "fileName": {
+                          "type": "string",
+                          "example": "israel_top.gpkg"
+                        },
+                        "size": {
+                          "type": "number",
+                          "example": 16777216
+                        },
+                        "modifiedAt": {
+                          "type": "string",
+                          "example": "2026-06-09T09:00:00.000Z"
+                        },
+                        "referencedBySets": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "example": "Set A"
+                          },
+                          "example": [],
+                          "description": "Map sets that reference this file"
+                        },
+                        "managedBySet": {
+                          "type": "boolean",
+                          "example": true,
+                          "description": "Whether the file lives inside a managed set folder"
+                        }
+                      },
+                      "required": [
+                        "relativePath",
+                        "absolutePath",
+                        "fileName",
+                        "size",
+                        "modifiedAt",
+                        "referencedBySets",
+                        "managedBySet"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "file"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/maps/download": {
+      "get": {
+        "tags": [
+          "Maps"
+        ],
+        "summary": "Download a shared map",
+        "operationId": "downloadSharedGpkg",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "maps/israel_rgb.gpkg"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary file download"
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dtms": {
+      "get": {
+        "tags": [
+          "DTMs"
+        ],
+        "summary": "List shared DTMs",
+        "operationId": "listSharedDtms",
+        "responses": {
+          "200": {
+            "description": "Shared DTM GeoPackages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "relativePath": {
+                            "type": "string",
+                            "example": "dtms/israel_top.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/dtms/israel_top.gpkg"
+                          },
+                          "fileName": {
+                            "type": "string",
+                            "example": "israel_top.gpkg"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 16777216
+                          },
+                          "modifiedAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          },
+                          "referencedBySets": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "example": "Set A"
+                            },
+                            "example": [],
+                            "description": "Map sets that reference this file"
+                          },
+                          "managedBySet": {
+                            "type": "boolean",
+                            "example": true,
+                            "description": "Whether the file lives inside a managed set folder"
+                          }
+                        },
+                        "required": [
+                          "relativePath",
+                          "absolutePath",
+                          "fileName",
+                          "size",
+                          "modifiedAt",
+                          "referencedBySets",
+                          "managedBySet"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "files"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "DTMs"
+        ],
+        "summary": "Rename a shared DTM",
+        "operationId": "renameSharedDtm",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "relativePath": {
+                    "type": "string",
+                    "example": "dtms/israel_top.gpkg"
+                  },
+                  "nextFileName": {
+                    "type": "string",
+                    "example": "israel_top_renamed.gpkg"
+                  }
+                },
+                "required": [
+                  "relativePath",
+                  "nextFileName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated file metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "relativePath": {
+                          "type": "string",
+                          "example": "dtms/israel_top.gpkg"
+                        },
+                        "absolutePath": {
+                          "type": "string",
+                          "example": "D:/data/dtms/israel_top.gpkg"
+                        },
+                        "fileName": {
+                          "type": "string",
+                          "example": "israel_top.gpkg"
+                        },
+                        "size": {
+                          "type": "number",
+                          "example": 16777216
+                        },
+                        "modifiedAt": {
+                          "type": "string",
+                          "example": "2026-06-09T09:00:00.000Z"
+                        },
+                        "referencedBySets": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "example": "Set A"
+                          },
+                          "example": [],
+                          "description": "Map sets that reference this file"
+                        },
+                        "managedBySet": {
+                          "type": "boolean",
+                          "example": true,
+                          "description": "Whether the file lives inside a managed set folder"
+                        }
+                      },
+                      "required": [
+                        "relativePath",
+                        "absolutePath",
+                        "fileName",
+                        "size",
+                        "modifiedAt",
+                        "referencedBySets",
+                        "managedBySet"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "file"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "DTMs"
+        ],
+        "summary": "Delete a shared DTM",
+        "operationId": "deleteSharedDtm",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "dtms/israel_top.gpkg"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted successfully"
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dtms/upload": {
+      "post": {
+        "tags": [
+          "DTMs"
+        ],
+        "summary": "Upload a shared DTM",
+        "operationId": "uploadSharedDtm",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "dtm": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "dtm"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Uploaded file metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "relativePath": {
+                          "type": "string",
+                          "example": "dtms/israel_top.gpkg"
+                        },
+                        "absolutePath": {
+                          "type": "string",
+                          "example": "D:/data/dtms/israel_top.gpkg"
+                        },
+                        "fileName": {
+                          "type": "string",
+                          "example": "israel_top.gpkg"
+                        },
+                        "size": {
+                          "type": "number",
+                          "example": 16777216
+                        },
+                        "modifiedAt": {
+                          "type": "string",
+                          "example": "2026-06-09T09:00:00.000Z"
+                        },
+                        "referencedBySets": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "example": "Set A"
+                          },
+                          "example": [],
+                          "description": "Map sets that reference this file"
+                        },
+                        "managedBySet": {
+                          "type": "boolean",
+                          "example": true,
+                          "description": "Whether the file lives inside a managed set folder"
+                        }
+                      },
+                      "required": [
+                        "relativePath",
+                        "absolutePath",
+                        "fileName",
+                        "size",
+                        "modifiedAt",
+                        "referencedBySets",
+                        "managedBySet"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "file"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dtms/download": {
+      "get": {
+        "tags": [
+          "DTMs"
+        ],
+        "summary": "Download a shared DTM",
+        "operationId": "downloadSharedDtm",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "dtms/israel_top.gpkg"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary file download"
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sets": {
+      "get": {
+        "tags": [
+          "Sets"
+        ],
+        "summary": "List map sets",
+        "operationId": "listSets",
+        "responses": {
+          "200": {
+            "description": "Map sets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "sets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "my-map-set"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "My Map Set"
+                          },
+                          "description": {
+                            "type": "string",
+                            "example": "Sample set description"
+                          },
+                          "maps": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "example": "map_01"
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "map",
+                                    "dtm"
+                                  ],
+                                  "example": "map"
+                                },
+                                "originalName": {
+                                  "type": "string",
+                                  "example": "israel_rgb.gpkg"
+                                },
+                                "storedName": {
+                                  "type": "string",
+                                  "example": "israel_rgb.gpkg"
+                                },
+                                "relativePath": {
+                                  "type": "string",
+                                  "example": "sets/set-1/israel_rgb.gpkg"
+                                },
+                                "absolutePath": {
+                                  "type": "string",
+                                  "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                                },
+                                "mimeType": {
+                                  "type": "string",
+                                  "example": "application/geopackage+sqlite3"
+                                },
+                                "size": {
+                                  "type": "number",
+                                  "example": 12485760
+                                },
+                                "createdAt": {
+                                  "type": "string",
+                                  "example": "2026-06-09T09:00:00.000Z"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind",
+                                "originalName",
+                                "storedName",
+                                "relativePath",
+                                "absolutePath",
+                                "mimeType",
+                                "size",
+                                "createdAt"
+                              ]
+                            },
+                            "example": [],
+                            "description": "Uploaded or linked map files"
+                          },
+                          "dtmLayers": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "example": "map_01"
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "map",
+                                    "dtm"
+                                  ],
+                                  "example": "map"
+                                },
+                                "originalName": {
+                                  "type": "string",
+                                  "example": "israel_rgb.gpkg"
+                                },
+                                "storedName": {
+                                  "type": "string",
+                                  "example": "israel_rgb.gpkg"
+                                },
+                                "relativePath": {
+                                  "type": "string",
+                                  "example": "sets/set-1/israel_rgb.gpkg"
+                                },
+                                "absolutePath": {
+                                  "type": "string",
+                                  "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                                },
+                                "mimeType": {
+                                  "type": "string",
+                                  "example": "application/geopackage+sqlite3"
+                                },
+                                "size": {
+                                  "type": "number",
+                                  "example": 12485760
+                                },
+                                "createdAt": {
+                                  "type": "string",
+                                  "example": "2026-06-09T09:00:00.000Z"
+                                },
+                                "priority": {
+                                  "type": "number",
+                                  "example": 0,
+                                  "description": "Layer order in the generated VRT"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind",
+                                "originalName",
+                                "storedName",
+                                "relativePath",
+                                "absolutePath",
+                                "mimeType",
+                                "size",
+                                "createdAt",
+                                "priority"
+                              ]
+                            },
+                            "example": [],
+                            "description": "Ordered DTM layers"
+                          },
+                          "vrtPath": {
+                            "type": "string",
+                            "example": "D:/data/sets/my-map-set.vrt"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "maps",
+                          "dtmLayers",
+                          "vrtPath",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "sets"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Sets"
+        ],
+        "summary": "Create a map set",
+        "operationId": "createSet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Northern Coverage"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Optional description"
+                  },
+                  "maps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary",
+                      "description": "Map GeoPackage upload (maps)"
+                    },
+                    "description": "One or more uploaded map files"
+                  },
+                  "dtms": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary",
+                      "description": "DTM GeoPackage upload (dtms)"
+                    },
+                    "description": "One or more uploaded DTM files"
+                  },
+                  "selectedMapPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "maps/israel_rgb.gpkg"
+                    },
+                    "example": [],
+                    "description": "Shared map file paths to copy into the set"
+                  },
+                  "selectedDtmPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "dtms/israel_top.gpkg"
+                    },
+                    "example": [],
+                    "description": "Shared DTM file paths to copy into the set"
+                  },
+                  "dtmSelectionOrder": {
+                    "type": "array",
+                    "description": "Optional ordering of uploaded and selected DTM files",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "upload",
+                            "existing"
+                          ],
+                          "example": "upload"
+                        },
+                        "relativePath": {
+                          "type": "string",
+                          "example": "dtms/israel_top.gpkg"
+                        }
+                      },
+                      "required": [
+                        "source"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created map set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "my-map-set"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "My Map Set"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Sample set description"
+                    },
+                    "maps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "map_01"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "map",
+                              "dtm"
+                            ],
+                            "example": "map"
+                          },
+                          "originalName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "storedName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "relativePath": {
+                            "type": "string",
+                            "example": "sets/set-1/israel_rgb.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "example": "application/geopackage+sqlite3"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 12485760
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "originalName",
+                          "storedName",
+                          "relativePath",
+                          "absolutePath",
+                          "mimeType",
+                          "size",
+                          "createdAt"
+                        ]
+                      },
+                      "example": [],
+                      "description": "Uploaded or linked map files"
+                    },
+                    "dtmLayers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "map_01"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "map",
+                              "dtm"
+                            ],
+                            "example": "map"
+                          },
+                          "originalName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "storedName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "relativePath": {
+                            "type": "string",
+                            "example": "sets/set-1/israel_rgb.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "example": "application/geopackage+sqlite3"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 12485760
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          },
+                          "priority": {
+                            "type": "number",
+                            "example": 0,
+                            "description": "Layer order in the generated VRT"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "originalName",
+                          "storedName",
+                          "relativePath",
+                          "absolutePath",
+                          "mimeType",
+                          "size",
+                          "createdAt",
+                          "priority"
+                        ]
+                      },
+                      "example": [],
+                      "description": "Ordered DTM layers"
+                    },
+                    "vrtPath": {
+                      "type": "string",
+                      "example": "D:/data/sets/my-map-set.vrt"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "example": "2026-06-09T09:00:00.000Z"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "example": "2026-06-09T09:00:00.000Z"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "maps",
+                    "dtmLayers",
+                    "vrtPath",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sets/{id}/assets": {
+      "post": {
+        "tags": [
+          "Sets"
+        ],
+        "summary": "Append assets to a map set",
+        "operationId": "appendAssetsToSet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "my-map-set"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "maps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary",
+                      "description": "Map GeoPackage upload (maps)"
+                    },
+                    "description": "One or more uploaded map files"
+                  },
+                  "dtms": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary",
+                      "description": "DTM GeoPackage upload (dtms)"
+                    },
+                    "description": "One or more uploaded DTM files"
+                  },
+                  "selectedMapPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "maps/israel_rgb.gpkg"
+                    },
+                    "example": [],
+                    "description": "Shared map file paths to copy into the set"
+                  },
+                  "selectedDtmPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "dtms/israel_top.gpkg"
+                    },
+                    "example": [],
+                    "description": "Shared DTM file paths to copy into the set"
+                  },
+                  "dtmSelectionOrder": {
+                    "type": "array",
+                    "description": "Optional ordering of uploaded and selected DTM files",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "upload",
+                            "existing"
+                          ],
+                          "example": "existing"
+                        },
+                        "relativePath": {
+                          "type": "string",
+                          "example": "dtms/israel_top.gpkg"
+                        }
+                      },
+                      "required": [
+                        "source"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated map set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "my-map-set"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "My Map Set"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Sample set description"
+                    },
+                    "maps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "map_01"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "map",
+                              "dtm"
+                            ],
+                            "example": "map"
+                          },
+                          "originalName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "storedName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "relativePath": {
+                            "type": "string",
+                            "example": "sets/set-1/israel_rgb.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "example": "application/geopackage+sqlite3"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 12485760
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "originalName",
+                          "storedName",
+                          "relativePath",
+                          "absolutePath",
+                          "mimeType",
+                          "size",
+                          "createdAt"
+                        ]
+                      },
+                      "example": [],
+                      "description": "Uploaded or linked map files"
+                    },
+                    "dtmLayers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "map_01"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "map",
+                              "dtm"
+                            ],
+                            "example": "map"
+                          },
+                          "originalName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "storedName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "relativePath": {
+                            "type": "string",
+                            "example": "sets/set-1/israel_rgb.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "example": "application/geopackage+sqlite3"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 12485760
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          },
+                          "priority": {
+                            "type": "number",
+                            "example": 0,
+                            "description": "Layer order in the generated VRT"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "originalName",
+                          "storedName",
+                          "relativePath",
+                          "absolutePath",
+                          "mimeType",
+                          "size",
+                          "createdAt",
+                          "priority"
+                        ]
+                      },
+                      "example": [],
+                      "description": "Ordered DTM layers"
+                    },
+                    "vrtPath": {
+                      "type": "string",
+                      "example": "D:/data/sets/my-map-set.vrt"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "example": "2026-06-09T09:00:00.000Z"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "example": "2026-06-09T09:00:00.000Z"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "maps",
+                    "dtmLayers",
+                    "vrtPath",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sets/{id}/dtm-order": {
+      "put": {
+        "tags": [
+          "Sets"
+        ],
+        "summary": "Reorder the DTM layers for a set",
+        "operationId": "reorderDtmLayers",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "my-map-set"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "dtmIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "dtm_01"
+                    },
+                    "example": [],
+                    "description": "Full desired ordering of DTM layer IDs"
+                  }
+                },
+                "required": [
+                  "dtmIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated map set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "my-map-set"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "My Map Set"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Sample set description"
+                    },
+                    "maps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "map_01"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "map",
+                              "dtm"
+                            ],
+                            "example": "map"
+                          },
+                          "originalName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "storedName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "relativePath": {
+                            "type": "string",
+                            "example": "sets/set-1/israel_rgb.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "example": "application/geopackage+sqlite3"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 12485760
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "originalName",
+                          "storedName",
+                          "relativePath",
+                          "absolutePath",
+                          "mimeType",
+                          "size",
+                          "createdAt"
+                        ]
+                      },
+                      "example": [],
+                      "description": "Uploaded or linked map files"
+                    },
+                    "dtmLayers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "map_01"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "map",
+                              "dtm"
+                            ],
+                            "example": "map"
+                          },
+                          "originalName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "storedName": {
+                            "type": "string",
+                            "example": "israel_rgb.gpkg"
+                          },
+                          "relativePath": {
+                            "type": "string",
+                            "example": "sets/set-1/israel_rgb.gpkg"
+                          },
+                          "absolutePath": {
+                            "type": "string",
+                            "example": "D:/data/sets/set-1/israel_rgb.gpkg"
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "example": "application/geopackage+sqlite3"
+                          },
+                          "size": {
+                            "type": "number",
+                            "example": 12485760
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "example": "2026-06-09T09:00:00.000Z"
+                          },
+                          "priority": {
+                            "type": "number",
+                            "example": 0,
+                            "description": "Layer order in the generated VRT"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "originalName",
+                          "storedName",
+                          "relativePath",
+                          "absolutePath",
+                          "mimeType",
+                          "size",
+                          "createdAt",
+                          "priority"
+                        ]
+                      },
+                      "example": [],
+                      "description": "Ordered DTM layers"
+                    },
+                    "vrtPath": {
+                      "type": "string",
+                      "example": "D:/data/sets/my-map-set.vrt"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "example": "2026-06-09T09:00:00.000Z"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "example": "2026-06-09T09:00:00.000Z"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "maps",
+                    "dtmLayers",
+                    "vrtPath",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sets/{id}": {
+      "delete": {
+        "tags": [
+          "Sets"
+        ],
+        "summary": "Delete a map set",
+        "operationId": "deleteSet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "my-map-set"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted successfully"
+          },
+          "404": {
+            "description": "Set not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Something went wrong."
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,12 +1,29 @@
-import { OPENAPI_DESCRIPTION, OPENAPI_TITLE, OPENAPI_VERSION } from "./constants.js";
+import { OPENAPI_DESCRIPTION, OPENAPI_TITLE, OPENAPI_VERSION, SERVICE_VERSION } from "./constants.js";
 import { openApiSchemas } from "./schemas.js";
 
-export function createOpenApiDocument() {
+function prefixVersionedApiPaths(document: {
+  paths: Record<string, unknown>;
+  [key: string]: unknown;
+}) {
+  const paths = Object.fromEntries(
+    Object.entries(document.paths).map(([path, schema]) => [
+      path.startsWith("/api/") ? path.replace("/api/", "/api/v1/") : path,
+      schema
+    ])
+  );
+
   return {
+    ...document,
+    paths
+  };
+}
+
+export function createOpenApiDocument() {
+  const document = {
     openapi: OPENAPI_VERSION,
     info: {
       title: OPENAPI_TITLE,
-      version: "0.1.0",
+      version: SERVICE_VERSION,
       description: OPENAPI_DESCRIPTION
     },
     tags: [
@@ -563,4 +580,6 @@ export function createOpenApiDocument() {
       }
     }
   };
+
+  return prefixVersionedApiPaths(document);
 }

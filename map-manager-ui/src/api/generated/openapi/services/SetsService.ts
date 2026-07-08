@@ -55,7 +55,7 @@ export class SetsService {
   }> {
     return __request(OpenAPI, {
       method: 'GET',
-      url: '/api/sets',
+      url: '/api/v1/sets',
     });
   }
   /**
@@ -135,7 +135,7 @@ export class SetsService {
   }> {
     return __request(OpenAPI, {
       method: 'POST',
-      url: '/api/sets',
+      url: '/api/v1/sets',
       formData: formData,
       mediaType: 'multipart/form-data',
       errors: {
@@ -220,7 +220,7 @@ export class SetsService {
   }> {
     return __request(OpenAPI, {
       method: 'POST',
-      url: '/api/sets/{id}/assets',
+      url: '/api/v1/sets/{id}/assets',
       path: {
         'id': id,
       },
@@ -289,7 +289,7 @@ export class SetsService {
   }> {
     return __request(OpenAPI, {
       method: 'PUT',
-      url: '/api/sets/{id}/dtm-order',
+      url: '/api/v1/sets/{id}/dtm-order',
       path: {
         'id': id,
       },
@@ -312,7 +312,7 @@ export class SetsService {
   }): CancelablePromise<void> {
     return __request(OpenAPI, {
       method: 'DELETE',
-      url: '/api/sets/{id}',
+      url: '/api/v1/sets/{id}',
       path: {
         'id': id,
       },

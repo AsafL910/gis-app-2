@@ -30,7 +30,7 @@ export class DtMsService {
   }> {
     return __request(OpenAPI, {
       method: 'GET',
-      url: '/api/dtms',
+      url: '/api/v1/dtms',
     });
   }
   /**
@@ -64,7 +64,7 @@ export class DtMsService {
   }> {
     return __request(OpenAPI, {
       method: 'PATCH',
-      url: '/api/dtms',
+      url: '/api/v1/dtms',
       body: requestBody,
       mediaType: 'application/json',
       errors: {
@@ -84,7 +84,7 @@ export class DtMsService {
   }): CancelablePromise<void> {
     return __request(OpenAPI, {
       method: 'DELETE',
-      url: '/api/dtms',
+      url: '/api/v1/dtms',
       query: {
         'path': path,
       },
@@ -123,7 +123,7 @@ export class DtMsService {
   }> {
     return __request(OpenAPI, {
       method: 'POST',
-      url: '/api/dtms/upload',
+      url: '/api/v1/dtms/upload',
       formData: formData,
       mediaType: 'multipart/form-data',
       errors: {
@@ -143,7 +143,7 @@ export class DtMsService {
   }): CancelablePromise<any> {
     return __request(OpenAPI, {
       method: 'GET',
-      url: '/api/dtms/download',
+      url: '/api/v1/dtms/download',
       query: {
         'path': path,
       },

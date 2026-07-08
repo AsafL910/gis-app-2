@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException
 
-from .config import RGB_ELEVATION_FORMULA
+from .config import RGB_ELEVATION_FORMULA, SERVICE_VERSION
 from .gdal_service import open_dataset, resolve_set_vrt_path, sample_bbox, sample_coordinate, sample_path
 from .models import BboxQuery, PathQuery, PointQuery, SampleResult, TerrainCalculationRequest, TerrainCalculationResponse
 from .storage import get_map_set
 
-app = FastAPI(title="Terrain Calculation Service", version="0.1.0")
+app = FastAPI(title="Terrain Calculation Service", version=SERVICE_VERSION)
 
 
 @app.get("/health")

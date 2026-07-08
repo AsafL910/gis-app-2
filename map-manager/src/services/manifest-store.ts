@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import type { MapSetManifest, MapSetRecord } from "../types.js";
+import { assertPathWithin } from "../utils/path.js";
 import {
   buildSetKey,
   buildSetManifestPath,
@@ -28,9 +29,14 @@ function hydrateSetRecord(raw: Partial<MapSetRecord> & { name?: string }, fallba
   const updatedAt = typeof raw.updatedAt === "string" && raw.updatedAt.trim() ? raw.updatedAt : createdAt;
   const maps = Array.isArray(raw.maps) ? raw.maps : [];
   const dtmLayers = Array.isArray(raw.dtmLayers) ? raw.dtmLayers : [];
-  const vrtPath = typeof raw.vrtPath === "string" && raw.vrtPath.trim()
+  const requestedVrtPath = typeof raw.vrtPath === "string" && raw.vrtPath.trim()
     ? raw.vrtPath
     : fallbackPath ?? buildSetVrtPath(config.setsRoot, name);
+  const vrtPath = assertPathWithin(
+    config.setsRoot,
+    requestedVrtPath,
+    `Set "${name}" has a VRT path outside the managed sets folder.`
+  );
 
   return {
     id: typeof raw.id === "string" && raw.id.trim() ? raw.id : toSetId(name),

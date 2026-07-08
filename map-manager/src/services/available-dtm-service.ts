@@ -1,18 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
+import { isPathWithin } from "../utils/path.js";
 import { listSets, saveSet } from "./manifest-store.js";
 import { generateDtmVrt } from "./vrt-builder.js";
 import type { AvailableGpkgFile } from "../types.js";
 
-function normalizePath(value: string): string {
-  return path.resolve(value).toLowerCase();
-}
-
 function isWithin(parentPath: string, candidatePath: string): boolean {
-  const normalizedParent = normalizePath(parentPath);
-  const normalizedCandidate = normalizePath(candidatePath);
-  return normalizedCandidate === normalizedParent || normalizedCandidate.startsWith(`${normalizedParent}${path.sep}`);
+  return isPathWithin(parentPath, candidatePath);
 }
 
 function toFileSize(size: number | bigint): number {

@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "generate:api:map-provider": "pixi run --manifest-path ../map-provider/pixi.toml export-openapi && openapi --input ../map-provider/openapi.json --output src/api/generated/map-provider --client fetch --useOptions --useUnionTypes --exportCore true --exportServices true --exportModels true --indent 2",
+    "generate:api:hat-provider": "pixi run --manifest-path ../hat-provider/pixi.toml export-openapi && openapi --input ../hat-provider/openapi.json --output src/api/generated/hat-provider --client fetch --useOptions --useUnionTypes --exportCore true --exportServices true --exportModels true --indent 2",
+    "generate:api": "npm run generate:api:map-provider && npm run generate:api:hat-provider",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -18,6 +21,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "openapi-typescript-codegen": "^0.31.0",
     "typescript": "^5.8.2",
     "vite": "^6.2.1"
   }

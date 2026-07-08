@@ -30,7 +30,7 @@ export class MapsService {
   }> {
     return __request(OpenAPI, {
       method: 'GET',
-      url: '/api/maps',
+      url: '/api/v1/maps',
     });
   }
   /**
@@ -64,7 +64,7 @@ export class MapsService {
   }> {
     return __request(OpenAPI, {
       method: 'PATCH',
-      url: '/api/maps',
+      url: '/api/v1/maps',
       body: requestBody,
       mediaType: 'application/json',
       errors: {
@@ -84,7 +84,7 @@ export class MapsService {
   }): CancelablePromise<void> {
     return __request(OpenAPI, {
       method: 'DELETE',
-      url: '/api/maps',
+      url: '/api/v1/maps',
       query: {
         'path': path,
       },
@@ -123,7 +123,7 @@ export class MapsService {
   }> {
     return __request(OpenAPI, {
       method: 'POST',
-      url: '/api/maps/upload',
+      url: '/api/v1/maps/upload',
       formData: formData,
       mediaType: 'multipart/form-data',
       errors: {
@@ -143,7 +143,7 @@ export class MapsService {
   }): CancelablePromise<any> {
     return __request(OpenAPI, {
       method: 'GET',
-      url: '/api/maps/download',
+      url: '/api/v1/maps/download',
       query: {
         'path': path,
       },

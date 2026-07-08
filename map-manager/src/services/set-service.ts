@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import { createId } from "../utils/id.js";
+import { isPathWithin } from "../utils/path.js";
 import { resolveSharedGpkg, storeSharedGpkg } from "./available-gpkg-service.js";
 import { resolveSharedDtm, storeSharedDtm } from "./available-dtm-service.js";
 import { deleteSetRecord, getSetOrThrow, listSets, saveSet } from "./manifest-store.js";
@@ -281,6 +282,10 @@ export async function removeSet(setId: string): Promise<MapSetRecord | null> {
   const resolvedVrtPath = path.resolve(deleted.vrtPath);
   const parentDirectory = path.dirname(resolvedVrtPath);
   const setsRoot = path.resolve(config.setsRoot);
+
+  if (!isPathWithin(setsRoot, resolvedVrtPath)) {
+    throw new Error(`Refusing to delete VRT path outside the managed sets folder: "${deleted.vrtPath}".`);
+  }
 
   if (parentDirectory === setsRoot) {
     await fs.rm(resolvedVrtPath, { force: true });

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "generate:api": "openapi --input http://localhost:4002/openapi.json --output src/api/generated/openapi --client fetch --useOptions --useUnionTypes --exportCore true --exportServices true --exportModels true --indent 2",
+    "generate:api": "npm run --prefix ../map-manager export-openapi && openapi --input ../map-manager/openapi.json --output src/api/generated/openapi --client fetch --useOptions --useUnionTypes --exportCore true --exportServices true --exportModels true --indent 2",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

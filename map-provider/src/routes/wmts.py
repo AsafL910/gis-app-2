@@ -25,6 +25,17 @@ def _parse_wmts_request(request: Request) -> tuple[str, str]:
     return service, action
 
 
+def _read_int_query_param(params: dict[str, str], key: str) -> int:
+    raw_value = params.get(key)
+    if raw_value is None:
+        raise ValueError(f"Missing required WMTS parameter: {key}")
+
+    try:
+        return int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"WMTS parameter {key} must be an integer") from exc
+
+
 @router.get(f"{API_PREFIX}/wmts/WMTSCapabilities.xml")
 def wmts_capabilities(request: Request):
     xml = build_wmts_capabilities_xml(_base_url(request))
@@ -44,14 +55,17 @@ def wmts_kvp(request: Request):
         return Response(content=xml, media_type="application/xml")
 
     if action == "gettile":
-        tile, mime_type = render_wmts_tile(
-            identifier=params.get("layer", ""),
-            tile_matrix_set=params.get("tilematrixset", ""),
-            tile_matrix=int(params.get("tilematrix", "0")),
-            tile_row=int(params.get("tilerow", "0")),
-            tile_col=int(params.get("tilecol", "0")),
-        )
-        return Response(content=tile, media_type=mime_type)
+        try:
+            tile, mime_type = render_wmts_tile(
+                identifier=params.get("layer", ""),
+                tile_matrix_set=params.get("tilematrixset", ""),
+                tile_matrix=_read_int_query_param(params, "tilematrix"),
+                tile_row=_read_int_query_param(params, "tilerow"),
+                tile_col=_read_int_query_param(params, "tilecol"),
+            )
+            return Response(content=tile, media_type=mime_type)
+        except ValueError as exc:
+            return Response(content=str(exc), status_code=400, media_type="text/plain")
 
     return Response(content="Unsupported WMTS request", status_code=400, media_type="text/plain")
 
@@ -88,15 +102,18 @@ def wmts_kvp_by_set(set_id: str, request: Request):
         return Response(content=xml, media_type="application/xml")
 
     if action == "gettile":
-        tile, mime_type = render_wmts_tile(
-            identifier=params.get("layer", ""),
-            tile_matrix_set=params.get("tilematrixset", ""),
-            tile_matrix=int(params.get("tilematrix", "0")),
-            tile_row=int(params.get("tilerow", "0")),
-            tile_col=int(params.get("tilecol", "0")),
-            set_id=set_id,
-        )
-        return Response(content=tile, media_type=mime_type)
+        try:
+            tile, mime_type = render_wmts_tile(
+                identifier=params.get("layer", ""),
+                tile_matrix_set=params.get("tilematrixset", ""),
+                tile_matrix=_read_int_query_param(params, "tilematrix"),
+                tile_row=_read_int_query_param(params, "tilerow"),
+                tile_col=_read_int_query_param(params, "tilecol"),
+                set_id=set_id,
+            )
+            return Response(content=tile, media_type=mime_type)
+        except ValueError as exc:
+            return Response(content=str(exc), status_code=400, media_type="text/plain")
 
     return Response(content="Unsupported WMTS request", status_code=400, media_type="text/plain")
 

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.config import API_PREFIX, FRONTEND_DIST_DIR, GPKG_DEBUG_LOGGING
+from src.config import API_PREFIX, FRONTEND_DIST_DIR, GPKG_DEBUG_LOGGING, SERVICE_VERSION
 from src.routes.catalog import router as catalog_router
 from src.services.catalog import list_catalog_sets
 from src.services.wmts import list_skipped_wmts_layers, list_wmts_layers
@@ -19,6 +19,7 @@ logger.disabled = not GPKG_DEBUG_LOGGING
 
 app = FastAPI(
     title="Map Server",
+    version=SERVICE_VERSION,
     description="Set-aware GeoPackage WMTS service with OpenLayers demo",
     docs_url=f"{API_PREFIX}/docs",
     redoc_url=None,

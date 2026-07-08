@@ -19,6 +19,9 @@ export function createApp() {
   app.use("/api/sets", setsRouter);
   app.use("/api/maps", mapsRouter);
   app.use("/api/dtms", dtmsRouter);
+  app.use("/api/v1/sets", setsRouter);
+  app.use("/api/v1/maps", mapsRouter);
+  app.use("/api/v1/dtms", dtmsRouter);
 
   app.use((error: Error, _request: Request, response: Response, _next: NextFunction) => {
     response.status(500).json({

@@ -281,5 +281,16 @@ describe("set-service", () => {
       expect(result).not.toBeNull();
       expect(mockedFs.rm).toHaveBeenCalledWith(path.resolve("/managed/sets", "dtm.vrt"), { force: true });
     });
+
+    it("should refuse to delete a VRT path outside the managed sets root", async () => {
+      mockedDeleteSetRecord.mockResolvedValueOnce({
+        vrtPath: path.join("/outside", "escape.vrt")
+      } as any);
+
+      await expect(removeSet("escaped-set")).rejects.toThrow(
+        /Refusing to delete VRT path outside the managed sets folder/
+      );
+      expect(mockedFs.rm).not.toHaveBeenCalled();
+    });
   });
 });

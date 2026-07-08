@@ -3,6 +3,24 @@ import os
 import re
 from pathlib import Path
 
+SERVICE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _read_version() -> str:
+    """Read the service version from pixi.toml (single source of truth)."""
+    pixi_toml = SERVICE_ROOT / "pixi.toml"
+    try:
+        content = pixi_toml.read_text(encoding="utf-8")
+        match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    return "0.0.0"
+
+
+SERVICE_VERSION = _read_version()
+
 from src.models.catalog import GeoPackageLayerConfig, MapSetRecord, StoredAssetRecord
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parents[2] / "data"))).resolve()
@@ -92,8 +110,10 @@ def _hydrate_map_set(raw_set: dict) -> MapSetRecord:
 
 def resolve_data_path(relative_path: str) -> Path:
     path = (DATA_DIR / relative_path).resolve()
-    if not str(path).startswith(str(DATA_DIR)):
-        raise ValueError(f"Path {relative_path} is outside DATA_DIR")
+    try:
+        path.relative_to(DATA_DIR)
+    except ValueError as exc:
+        raise ValueError(f"Path {relative_path} is outside DATA_DIR") from exc
     return path
 
 

@@ -1,0 +1,1001 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Map Server",
+    "description": "Set-aware GeoPackage WMTS service with OpenLayers demo",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/demo": {
+      "get": {
+        "summary": "Demo Index",
+        "operationId": "demo_index_demo_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sets": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List Sets",
+        "operationId": "list_sets_api_v1_sets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sets/{set_id}/layers": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List Layers For Set",
+        "operationId": "list_layers_for_set_api_v1_sets__set_id__layers_get",
+        "parameters": [
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLayersResponseSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/layers": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List Layers",
+        "operationId": "list_layers_api_v1_layers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLayersResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/wmts/WMTSCapabilities.xml": {
+      "get": {
+        "tags": [
+          "WMTS"
+        ],
+        "summary": "Wmts Capabilities",
+        "operationId": "wmts_capabilities_api_v1_wmts_WMTSCapabilities_xml_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/wmts": {
+      "get": {
+        "tags": [
+          "WMTS"
+        ],
+        "summary": "Wmts Kvp",
+        "operationId": "wmts_kvp_api_v1_wmts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/wmts/{identifier}/{tile_matrix_set}/{tile_matrix}/{tile_row}/{tile_col}.{ext}": {
+      "get": {
+        "tags": [
+          "WMTS"
+        ],
+        "summary": "Wmts Rest Tile",
+        "operationId": "wmts_rest_tile_api_v1_wmts__identifier___tile_matrix_set___tile_matrix___tile_row___tile_col___ext__get",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Identifier"
+            }
+          },
+          {
+            "name": "tile_matrix_set",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tile Matrix Set"
+            }
+          },
+          {
+            "name": "tile_matrix",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tile Matrix"
+            }
+          },
+          {
+            "name": "tile_row",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tile Row"
+            }
+          },
+          {
+            "name": "tile_col",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tile Col"
+            }
+          },
+          {
+            "name": "ext",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/wmts/sets/{set_id}/WMTSCapabilities.xml": {
+      "get": {
+        "tags": [
+          "WMTS"
+        ],
+        "summary": "Wmts Capabilities By Set",
+        "operationId": "wmts_capabilities_by_set_api_v1_wmts_sets__set_id__WMTSCapabilities_xml_get",
+        "parameters": [
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/wmts/sets/{set_id}": {
+      "get": {
+        "tags": [
+          "WMTS"
+        ],
+        "summary": "Wmts Kvp By Set",
+        "operationId": "wmts_kvp_by_set_api_v1_wmts_sets__set_id__get",
+        "parameters": [
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/wmts/sets/{set_id}/{identifier}/{tile_matrix_set}/{tile_matrix}/{tile_row}/{tile_col}.{ext}": {
+      "get": {
+        "tags": [
+          "WMTS"
+        ],
+        "summary": "Wmts Rest Tile By Set",
+        "operationId": "wmts_rest_tile_by_set_api_v1_wmts_sets__set_id___identifier___tile_matrix_set___tile_matrix___tile_row___tile_col___ext__get",
+        "parameters": [
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Set Id"
+            }
+          },
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Identifier"
+            }
+          },
+          {
+            "name": "tile_matrix_set",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tile Matrix Set"
+            }
+          },
+          {
+            "name": "tile_matrix",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tile Matrix"
+            }
+          },
+          {
+            "name": "tile_row",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tile Row"
+            }
+          },
+          {
+            "name": "tile_col",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tile Col"
+            }
+          },
+          {
+            "name": "ext",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/demo/{full_path}": {
+      "get": {
+        "summary": "Frontend Fallback",
+        "operationId": "frontend_fallback_demo__full_path__get",
+        "parameters": [
+          {
+            "name": "full_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Full Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CatalogAssetSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "size"
+        ],
+        "title": "CatalogAssetSchema"
+      },
+      "CatalogBoundsNativeSchema": {
+        "properties": {
+          "crs": {
+            "type": "string",
+            "title": "Crs"
+          },
+          "extent": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Extent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "crs",
+          "extent"
+        ],
+        "title": "CatalogBoundsNativeSchema"
+      },
+      "CatalogBoundsSchema": {
+        "properties": {
+          "epsg4326": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epsg4326"
+          },
+          "native": {
+            "$ref": "#/components/schemas/CatalogBoundsNativeSchema"
+          }
+        },
+        "type": "object",
+        "required": [
+          "epsg4326",
+          "native"
+        ],
+        "title": "CatalogBoundsSchema"
+      },
+      "CatalogLayersResponseSchema": {
+        "properties": {
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogWmtsLayerSchema"
+            },
+            "type": "array",
+            "title": "Layers"
+          },
+          "skipped_layers": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSkippedLayerSchema"
+            },
+            "type": "array",
+            "title": "Skipped Layers"
+          },
+          "service": {
+            "$ref": "#/components/schemas/CatalogServiceSchema"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layers",
+          "skipped_layers",
+          "service"
+        ],
+        "title": "CatalogLayersResponseSchema"
+      },
+      "CatalogResponseSchema": {
+        "properties": {
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSetSchema"
+            },
+            "type": "array",
+            "title": "Sets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sets"
+        ],
+        "title": "CatalogResponseSchema"
+      },
+      "CatalogServiceSchema": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "capabilities_url": {
+            "type": "string",
+            "title": "Capabilities Url"
+          },
+          "demo_url": {
+            "type": "string",
+            "title": "Demo Url"
+          },
+          "kvp_url": {
+            "type": "string",
+            "title": "Kvp Url"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "capabilities_url",
+          "demo_url",
+          "kvp_url",
+          "base_url"
+        ],
+        "title": "CatalogServiceSchema"
+      },
+      "CatalogSetSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "maps": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogAssetSchema"
+            },
+            "type": "array",
+            "title": "Maps"
+          },
+          "dtmLayers": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogAssetSchema"
+            },
+            "type": "array",
+            "title": "Dtmlayers"
+          },
+          "vrtPath": {
+            "type": "string",
+            "title": "Vrtpath"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "maps",
+          "dtmLayers",
+          "vrtPath"
+        ],
+        "title": "CatalogSetSchema"
+      },
+      "CatalogSkippedLayerSchema": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "name",
+          "path",
+          "reason"
+        ],
+        "title": "CatalogSkippedLayerSchema"
+      },
+      "CatalogTileMatrixSchema": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier"
+          },
+          "zoom": {
+            "type": "integer",
+            "title": "Zoom"
+          },
+          "matrix_width": {
+            "type": "integer",
+            "title": "Matrix Width"
+          },
+          "matrix_height": {
+            "type": "integer",
+            "title": "Matrix Height"
+          },
+          "tile_width": {
+            "type": "integer",
+            "title": "Tile Width"
+          },
+          "tile_height": {
+            "type": "integer",
+            "title": "Tile Height"
+          },
+          "pixel_x_size": {
+            "type": "number",
+            "title": "Pixel X Size"
+          },
+          "pixel_y_size": {
+            "type": "number",
+            "title": "Pixel Y Size"
+          },
+          "scale_denominator": {
+            "type": "number",
+            "title": "Scale Denominator"
+          },
+          "min_tile_col": {
+            "type": "integer",
+            "title": "Min Tile Col"
+          },
+          "max_tile_col": {
+            "type": "integer",
+            "title": "Max Tile Col"
+          },
+          "min_tile_row": {
+            "type": "integer",
+            "title": "Min Tile Row"
+          },
+          "max_tile_row": {
+            "type": "integer",
+            "title": "Max Tile Row"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "zoom",
+          "matrix_width",
+          "matrix_height",
+          "tile_width",
+          "tile_height",
+          "pixel_x_size",
+          "pixel_y_size",
+          "scale_denominator",
+          "min_tile_col",
+          "max_tile_col",
+          "min_tile_row",
+          "max_tile_row"
+        ],
+        "title": "CatalogTileMatrixSchema"
+      },
+      "CatalogTileMatrixSetSchema": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier"
+          },
+          "supported_crs": {
+            "type": "string",
+            "title": "Supported Crs"
+          },
+          "bounds": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Bounds"
+          },
+          "top_left_corner": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Top Left Corner"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "supported_crs",
+          "bounds",
+          "top_left_corner"
+        ],
+        "title": "CatalogTileMatrixSetSchema"
+      },
+      "CatalogWmtsLayerSchema": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "tile_url": {
+            "type": "string",
+            "title": "Tile Url"
+          },
+          "rest_tile_url": {
+            "type": "string",
+            "title": "Rest Tile Url"
+          },
+          "capabilities_url": {
+            "type": "string",
+            "title": "Capabilities Url"
+          },
+          "demo_url": {
+            "type": "string",
+            "title": "Demo Url"
+          },
+          "source_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Modes"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "min_zoom": {
+            "type": "integer",
+            "title": "Min Zoom"
+          },
+          "max_zoom": {
+            "type": "integer",
+            "title": "Max Zoom"
+          },
+          "matrix_set": {
+            "type": "string",
+            "title": "Matrix Set"
+          },
+          "crs": {
+            "type": "string",
+            "title": "Crs"
+          },
+          "tile_matrix_set": {
+            "$ref": "#/components/schemas/CatalogTileMatrixSetSchema"
+          },
+          "tile_matrices": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogTileMatrixSchema"
+            },
+            "type": "array",
+            "title": "Tile Matrices"
+          },
+          "bounds": {
+            "$ref": "#/components/schemas/CatalogBoundsSchema"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "name",
+          "path",
+          "provider",
+          "tile_url",
+          "rest_tile_url",
+          "capabilities_url",
+          "demo_url",
+          "source_modes",
+          "format",
+          "min_zoom",
+          "max_zoom",
+          "matrix_set",
+          "crs",
+          "tile_matrix_set",
+          "tile_matrices",
+          "bounds"
+        ],
+        "title": "CatalogWmtsLayerSchema"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
