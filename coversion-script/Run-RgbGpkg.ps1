@@ -1,3 +1,4 @@
+$Version = "v0.2.0"
 [CmdletBinding()]
 param(
     [switch]$AutoZoom,
@@ -26,6 +27,7 @@ function Write-Stage {
 }
 
 try {
+    Write-Host "RGB GeoPackage Builder $Version" -ForegroundColor Cyan
     $root = Split-Path -Parent $PSCommandPath
     $python = Join-Path $root "runtime\python.exe"
     $script = Join-Path $root "scripts\convert_rgb_gpkg.py"
@@ -38,8 +40,15 @@ try {
         }
     }
 
+    $usePixi = $false
     if (-not (Test-Path $python)) {
-        throw "Missing portable runtime: $python"
+        $pixiExe = Get-Command pixi -ErrorAction SilentlyContinue
+        if ($pixiExe) {
+            $usePixi = $true
+            Write-Host "Using pixi environment for Python." -ForegroundColor DarkGray
+        } else {
+            throw "Missing portable runtime: $python (and 'pixi' was not found in your PATH). Either build the portable package or install pixi."
+        }
     }
 
     if (-not (Test-Path $script)) {
@@ -138,7 +147,11 @@ try {
     Write-Host ""
     Write-Host "Processing $($inputFile.Name) -> $([System.IO.Path]::GetFileName($outputFile))" -ForegroundColor Green
     Write-Stage -Activity "RGB GeoPackage Builder" -Status "Launching converter" -PercentComplete 30
-    & $python $script $inputFile.FullName $outputFile @extraArgs
+    if ($usePixi) {
+        & pixi run --manifest-path (Join-Path $root "pixi.toml") python $script $inputFile.FullName $outputFile @extraArgs
+    } else {
+        & $python $script $inputFile.FullName $outputFile @extraArgs
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Conversion failed."
     }

@@ -14,6 +14,8 @@ from osgeo import gdal, osr
 
 
 gdal.UseExceptions()
+gdal.SetConfigOption("GDAL_TIFF_INTERNAL_BIGTIFF", "YES")
+gdal.SetConfigOption("BIGTIFF_DEF", "YES")
 
 GPKG_APP_ID = 0x47504B47  # "GPKG"
 DESCRIPTION = "Terrain-RGB tile pyramid wrapped without pixel changes"
@@ -121,7 +123,14 @@ def write_rgb_blocks(
         rgb_ds = None
 
 
-def encode_terrain_rgb(src_path: Path, work_dir: Path, target_srs: str, base: float, interval: float) -> tuple[Path, tuple[float, float, float, float]]:
+def encode_terrain_rgb(
+    src_path: Path,
+    work_dir: Path,
+    target_srs: str,
+    base: float,
+    interval: float,
+    target_res: float | None = None,
+) -> tuple[Path, tuple[float, float, float, float]]:
     src_ds = gdal.Open(str(src_path))
     if src_ds is None:
         raise FileNotFoundError(f"Could not open {src_path}")
@@ -141,6 +150,9 @@ def encode_terrain_rgb(src_path: Path, work_dir: Path, target_srs: str, base: fl
     }
     if src_nodata is not None:
         warp_kwargs["srcNodata"] = src_nodata
+    if target_res is not None:
+        warp_kwargs["xRes"] = target_res
+        warp_kwargs["yRes"] = target_res
 
     try:
         log("[1/4] Reprojecting and encoding RGB...")
@@ -177,7 +189,6 @@ def encode_terrain_rgb(src_path: Path, work_dir: Path, target_srs: str, base: fl
         raise
 
 
-
 def compute_auto_zoom(rgb_path: Path, max_zoom_limit: int = 30) -> int:
     rgb_ds = gdal.Open(str(rgb_path))
     if rgb_ds is None:
@@ -187,7 +198,7 @@ def compute_auto_zoom(rgb_path: Path, max_zoom_limit: int = 30) -> int:
     res_deg = abs(gt[1])
     if res_deg <= 0:
         raise ValueError("Cannot compute automatic zoom from a non-positive pixel size")
-    max_zoom = int(math.floor(math.log2(360.0 / (256.0 * res_deg))))
+    max_zoom = int(math.ceil(math.log2(360.0 / (256.0 * res_deg))))
     return max(0, min(max_zoom, max_zoom_limit))
 
 
@@ -203,9 +214,11 @@ def run_gdal2tiles(rgb_path: Path, tiles_dir: Path, min_zoom: int, max_zoom: int
         "-n",
         "-w",
         "none",
-        "-q",
+        "-v",
         "--processes",
         str(processes),
+        "-r",
+        "near",
         "-z",
         f"{min_zoom}-{max_zoom}",
         str(rgb_path),
@@ -606,9 +619,29 @@ def prune_transparent_tiles(output_path: Path) -> tuple[int, int]:
 def build_gpkg(src_path: Path, output_path: Path, target_srs: str, base: float, interval: float, min_zoom: int | None, max_zoom: int | None, auto_zoom: bool) -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         work_dir = Path(tmpdir)
-        rgb_path, bbox = encode_terrain_rgb(src_path, work_dir, target_srs, base, interval)
         if auto_zoom:
-            auto_max_zoom = compute_auto_zoom(rgb_path)
+            src_ds = gdal.Open(str(src_path))
+            if src_ds is None:
+                raise FileNotFoundError(f"Could not open {src_path}")
+            temp_vrt_path = work_dir / "temp_warp.vrt"
+            try:
+                temp_warp_ds = gdal.Warp(str(temp_vrt_path), src_ds, format="VRT", dstSRS=target_srs)
+                if temp_warp_ds is None:
+                    raise RuntimeError("Failed to create temporary VRT to determine zoom level")
+                gt = temp_warp_ds.GetGeoTransform()
+                res_deg = abs(gt[1])
+            finally:
+                temp_warp_ds = None
+                src_ds = None
+                try:
+                    if temp_vrt_path.exists():
+                        temp_vrt_path.unlink()
+                except Exception:
+                    pass
+
+            if res_deg <= 0:
+                raise ValueError("Cannot compute automatic zoom from a non-positive pixel size")
+            auto_max_zoom = int(math.ceil(math.log2(360.0 / (256.0 * res_deg))))
             log(f"      Auto zoom ceiling selected: {auto_max_zoom}")
             if max_zoom is None:
                 max_zoom = auto_max_zoom
@@ -616,13 +649,22 @@ def build_gpkg(src_path: Path, output_path: Path, target_srs: str, base: float, 
                 max_zoom = min(max_zoom, auto_max_zoom)
             if min_zoom is None:
                 min_zoom = max(0, max_zoom - 6)
-        if min_zoom is not None and max_zoom is not None and min_zoom > max_zoom:
+
+        if min_zoom is None or max_zoom is None:
+            raise ValueError("gpkg output requires either --auto-zoom or both --min-zoom and --max-zoom")
+
+        if min_zoom > max_zoom:
             raise ValueError("Computed or supplied minimum zoom cannot be greater than the final maximum zoom")
+
+        # Compute exact target resolution in degrees per pixel matching the selected max_zoom
+        target_res = 360.0 / ((2 ** max_zoom) * 256.0)
+
+        # Warp the float elevation data directly to target_res, then encode to RGB
+        rgb_path, bbox = encode_terrain_rgb(src_path, work_dir, target_srs, base, interval, target_res=target_res)
+
         tiles_dir = work_dir / "tiles"
         tiles_dir.mkdir(parents=True, exist_ok=True)
         processes = max(1, min(8, (os.cpu_count() or 1)))
-        if min_zoom is None or max_zoom is None:
-            raise ValueError("gpkg output requires either --auto-zoom or both --min-zoom and --max-zoom")
         run_gdal2tiles(rgb_path, tiles_dir, min_zoom, max_zoom, processes)
         source_name = f"{output_path.stem}.tif"
         create_gpkg(tiles_dir, output_path, output_path.stem, source_name, bbox, min_zoom, max_zoom)
