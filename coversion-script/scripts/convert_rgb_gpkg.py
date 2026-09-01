@@ -7,18 +7,71 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 from osgeo import gdal, osr
 
 
 gdal.UseExceptions()
-gdal.SetConfigOption("GDAL_TIFF_INTERNAL_BIGTIFF", "YES")
-gdal.SetConfigOption("BIGTIFF_DEF", "YES")
 
 GPKG_APP_ID = 0x47504B47  # "GPKG"
 DESCRIPTION = "Terrain-RGB tile pyramid wrapped without pixel changes"
+NATIVE_DESCRIPTION = "Terrain-RGB native-resolution base layer"
+TILE_SIZE = 256
+
+RESAMPLE_ALG_MAP = {
+    "near": gdal.GRA_NearestNeighbour,
+    "bilinear": gdal.GRA_Bilinear,
+    "cubic": gdal.GRA_Cubic,
+    "cubicspline": gdal.GRA_CubicSpline,
+    "lanczos": gdal.GRA_Lanczos,
+    "average": gdal.GRA_Average,
+    "mode": gdal.GRA_Mode,
+    "max": getattr(gdal, "GRA_Max", None),
+    "min": getattr(gdal, "GRA_Min", None),
+    "med": getattr(gdal, "GRA_Med", None),
+    "q1": getattr(gdal, "GRA_Q1", None),
+    "q3": getattr(gdal, "GRA_Q3", None),
+    "rms": getattr(gdal, "GRA_RMS", None),
+}
+RESAMPLE_ALG_MAP = {name: alg for name, alg in RESAMPLE_ALG_MAP.items() if alg is not None}
+if "max" not in RESAMPLE_ALG_MAP:
+    raise RuntimeError("GDAL build does not support max resampling")
+
+
+def quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def load_user_version_from_pixi() -> int:
+    pixi_path = Path(__file__).resolve().parents[1] / "pixi.toml"
+    with pixi_path.open("rb") as fh:
+        data = tomllib.load(fh)
+
+    workspace = data.get("workspace")
+    if not isinstance(workspace, dict):
+        raise ValueError("pixi.toml is missing a [workspace] table")
+
+    version_text = workspace.get("version")
+    if not isinstance(version_text, str) or not version_text.strip():
+        raise ValueError("pixi.toml is missing workspace.version")
+
+    parts = version_text.strip().split(".")
+    if len(parts) != 3:
+        raise ValueError(f"workspace.version must use semantic versioning, got {version_text!r}")
+
+    try:
+        major, minor, patch = (int(part) for part in parts)
+    except ValueError as exc:
+        raise ValueError(f"workspace.version must contain only integers, got {version_text!r}") from exc
+
+    if major < 0 or minor < 0 or patch < 0:
+        raise ValueError(f"workspace.version must not contain negative values, got {version_text!r}")
+
+    return major * 10000 + minor * 100 + patch
 
 
 def log(message: str) -> None:
@@ -76,8 +129,8 @@ def write_rgb_blocks(
             "COMPRESS=DEFLATE",
             "BIGTIFF=YES",
             "INTERLEAVE=PIXEL",
-            "BLOCKXSIZE=256",
-            "BLOCKYSIZE=256",
+            f"BLOCKXSIZE={TILE_SIZE}",
+            f"BLOCKYSIZE={TILE_SIZE}",
         ],
     )
     if rgb_ds is None:
@@ -129,7 +182,9 @@ def encode_terrain_rgb(
     target_srs: str,
     base: float,
     interval: float,
+    resample_alg: str,
     target_res: float | None = None,
+    output_name: str = "rgb.tif",
 ) -> tuple[Path, tuple[float, float, float, float]]:
     src_ds = gdal.Open(str(src_path))
     if src_ds is None:
@@ -139,13 +194,13 @@ def encode_terrain_rgb(
     src_nodata = src_band.GetNoDataValue()
 
     warped_path = work_dir / "warped.vrt"
-    rgb_path = work_dir / "rgb.tif"
+    rgb_path = work_dir / output_name
 
     warp_kwargs = {
         "format": "VRT",
         "dstSRS": target_srs,
         "dstNodata": None,
-        "resampleAlg": gdal.GRA_Lanczos,
+        "resampleAlg": RESAMPLE_ALG_MAP[resample_alg],
         "multithread": True,
     }
     if src_nodata is not None:
@@ -198,8 +253,212 @@ def compute_auto_zoom(rgb_path: Path, max_zoom_limit: int = 30) -> int:
     res_deg = abs(gt[1])
     if res_deg <= 0:
         raise ValueError("Cannot compute automatic zoom from a non-positive pixel size")
-    max_zoom = int(math.ceil(math.log2(360.0 / (256.0 * res_deg))))
+    max_zoom = int(math.floor(math.log2(360.0 / (256.0 * res_deg))))
     return max(0, min(max_zoom, max_zoom_limit))
+
+
+def compute_tile_matrix_size(width: int, height: int) -> tuple[int, int]:
+    return math.ceil(width / TILE_SIZE), math.ceil(height / TILE_SIZE)
+
+
+def create_terrain_rgb_schema(conn: sqlite3.Connection, table_name: str) -> None:
+    table_identifier = quote_identifier(table_name)
+    table_name_sql = table_name.replace("'", "''")
+
+    conn.executescript(
+        f"""
+        CREATE TABLE {table_identifier} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            zoom_level INTEGER NOT NULL,
+            tile_column INTEGER NOT NULL,
+            tile_row INTEGER NOT NULL,
+            tile_data BLOB NOT NULL,
+            UNIQUE (zoom_level, tile_column, tile_row)
+        );
+        CREATE TRIGGER {table_name}_tile_column_insert BEFORE INSERT ON {table_identifier} FOR EACH ROW BEGIN
+          SELECT RAISE(ABORT, 'insert on table ''{table_name}'' violates constraint: tile_column cannot be < 0') WHERE (NEW.tile_column < 0);
+          SELECT RAISE(ABORT, 'insert on table ''{table_name}'' violates constraint: tile_column must by < matrix_width specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE lower(table_name) = lower('{table_name_sql}') AND zoom_level = NEW.zoom_level));
+        END;
+        CREATE TRIGGER {table_name}_tile_column_update BEFORE UPDATE OF tile_column ON {table_identifier} FOR EACH ROW BEGIN
+          SELECT RAISE(ABORT, 'update on table ''{table_name}'' violates constraint: tile_column cannot be < 0') WHERE (NEW.tile_column < 0);
+          SELECT RAISE(ABORT, 'update on table ''{table_name}'' violates constraint: tile_column must by < matrix_width specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE lower(table_name) = lower('{table_name_sql}') AND zoom_level = NEW.zoom_level));
+        END;
+        CREATE TRIGGER {table_name}_tile_row_insert BEFORE INSERT ON {table_identifier} FOR EACH ROW BEGIN
+          SELECT RAISE(ABORT, 'insert on table ''{table_name}'' violates constraint: tile_row cannot be < 0') WHERE (NEW.tile_row < 0);
+          SELECT RAISE(ABORT, 'insert on table ''{table_name}'' violates constraint: tile_row must by < matrix_height specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE lower(table_name) = lower('{table_name_sql}') AND zoom_level = NEW.zoom_level));
+        END;
+        CREATE TRIGGER {table_name}_tile_row_update BEFORE UPDATE OF tile_row ON {table_identifier} FOR EACH ROW BEGIN
+          SELECT RAISE(ABORT, 'update on table ''{table_name}'' violates constraint: tile_row cannot be < 0') WHERE (NEW.tile_row < 0);
+          SELECT RAISE(ABORT, 'update on table ''{table_name}'' violates constraint: tile_row must by < matrix_height specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE lower(table_name) = lower('{table_name_sql}') AND zoom_level = NEW.zoom_level));
+        END;
+        CREATE TRIGGER {table_name}_zoom_insert BEFORE INSERT ON {table_identifier} FOR EACH ROW BEGIN
+          SELECT RAISE(ABORT, 'insert on table ''{table_name}'' violates constraint: zoom_level not specified for table in gpkg_tile_matrix') WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE lower(table_name) = lower('{table_name_sql}')));
+        END;
+        CREATE TRIGGER {table_name}_zoom_update BEFORE UPDATE OF zoom_level ON {table_identifier} FOR EACH ROW BEGIN
+          SELECT RAISE(ABORT, 'update on table ''{table_name}'' violates constraint: zoom_level not specified for table in gpkg_tile_matrix') WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE lower(table_name) = lower('{table_name_sql}')));
+        END;
+        """
+    )
+
+
+def register_terrain_rgb_table(
+    conn: sqlite3.Connection,
+    table_name: str,
+    identifier: str,
+    description: str,
+    bbox: tuple[float, float, float, float],
+    min_zoom: int,
+    max_zoom: int,
+) -> None:
+    conn.execute(
+        "INSERT INTO gpkg_contents (table_name, data_type, identifier, description, min_x, min_y, max_x, max_y, srs_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (table_name, "tiles", identifier, description, bbox[0], bbox[1], bbox[2], bbox[3], 4326),
+    )
+    conn.execute(
+        "INSERT INTO gpkg_tile_matrix_set (table_name, srs_id, min_x, min_y, max_x, max_y) VALUES (?, ?, ?, ?, ?, ?)",
+        (table_name, 4326, -180.0, -90.0, 180.0, 270.0),
+    )
+
+    for zoom in range(min_zoom, max_zoom + 1):
+        matrix = 2 ** zoom
+        pixel = 360.0 / (matrix * 256.0)
+        conn.execute(
+            "INSERT INTO gpkg_tile_matrix (table_name, zoom_level, matrix_width, matrix_height, tile_width, tile_height, pixel_x_size, pixel_y_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (table_name, zoom, matrix, matrix, TILE_SIZE, TILE_SIZE, pixel, pixel),
+        )
+
+
+def register_native_terrain_rgb_table(
+    conn: sqlite3.Connection,
+    table_name: str,
+    identifier: str,
+    description: str,
+    bbox: tuple[float, float, float, float],
+    width: int,
+    height: int,
+    pixel_x_size: float,
+    pixel_y_size: float,
+) -> None:
+    conn.execute(
+        "INSERT INTO gpkg_contents (table_name, data_type, identifier, description, min_x, min_y, max_x, max_y, srs_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (table_name, "tiles", identifier, description, bbox[0], bbox[1], bbox[2], bbox[3], 4326),
+    )
+    conn.execute(
+        "INSERT INTO gpkg_tile_matrix_set (table_name, srs_id, min_x, min_y, max_x, max_y) VALUES (?, ?, ?, ?, ?, ?)",
+        (table_name, 4326, bbox[0], bbox[1], bbox[2], bbox[3]),
+    )
+    matrix_width, matrix_height = compute_tile_matrix_size(width, height)
+    conn.execute(
+        "INSERT INTO gpkg_tile_matrix (table_name, zoom_level, matrix_width, matrix_height, tile_width, tile_height, pixel_x_size, pixel_y_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (table_name, 0, matrix_width, matrix_height, TILE_SIZE, TILE_SIZE, pixel_x_size, pixel_y_size),
+    )
+
+
+def import_tiles_for_table(
+    conn: sqlite3.Connection,
+    table_name: str,
+    tile_root: Path,
+    zoom_filter: Callable[[int], bool],
+) -> tuple[int, int]:
+    table_identifier = quote_identifier(table_name)
+    total_tiles = 0
+    imported_tiles = 0
+
+    for z_dir in sorted([p for p in tile_root.iterdir() if p.is_dir() and p.name.isdigit()], key=lambda p: int(p.name)):
+        zoom = int(z_dir.name)
+        if not zoom_filter(zoom):
+            continue
+
+        zoom_tiles = 0
+        log(f"      Zoom {zoom}: importing tiles into {table_name}...")
+        for x_dir in sorted([p for p in z_dir.iterdir() if p.is_dir() and p.name.isdigit()], key=lambda p: int(p.name)):
+            tile_column = int(x_dir.name)
+            for png_path in sorted(x_dir.glob("*.png"), key=lambda p: int(p.stem)):
+                tile_row = int(png_path.stem)
+                conn.execute(
+                    f"INSERT INTO {table_identifier} (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)",
+                    (zoom, tile_column, tile_row, sqlite3.Binary(png_path.read_bytes())),
+                )
+                total_tiles += 1
+                zoom_tiles += 1
+                imported_tiles += 1
+        log(f"        {zoom_tiles} tiles imported at zoom {zoom}.")
+
+    return total_tiles, imported_tiles
+
+
+def import_raster_tiles_for_table(
+    conn: sqlite3.Connection,
+    table_name: str,
+    rgb_path: Path,
+    work_dir: Path,
+) -> tuple[int, int]:
+    table_identifier = quote_identifier(table_name)
+    rgb_ds = gdal.Open(str(rgb_path))
+    if rgb_ds is None:
+        raise FileNotFoundError(f"Could not open {rgb_path}")
+
+    if rgb_ds.RasterCount < 3:
+        raise RuntimeError(f"{rgb_path} does not contain a 3-band RGB raster")
+
+    width = rgb_ds.RasterXSize
+    height = rgb_ds.RasterYSize
+    total_tiles = 0
+    imported_tiles = 0
+    matrix_width, matrix_height = compute_tile_matrix_size(width, height)
+    total_expected = matrix_width * matrix_height
+    tile_png_path = work_dir / f"{table_name}.png"
+    mem_driver = gdal.GetDriverByName("MEM")
+    if mem_driver is None:
+        raise RuntimeError("GDAL MEM driver is unavailable")
+
+    for yoff in range(0, height, TILE_SIZE):
+        ysize = min(TILE_SIZE, height - yoff)
+        tile_row = yoff // TILE_SIZE
+        for xoff in range(0, width, TILE_SIZE):
+            xsize = min(TILE_SIZE, width - xoff)
+            tile_column = xoff // TILE_SIZE
+            window = rgb_ds.ReadAsArray(xoff, yoff, xsize, ysize)
+            if window is None:
+                raise RuntimeError(f"Failed to read {table_name} tile at {xoff},{yoff}")
+
+            if window.ndim == 2:
+                window = window[np.newaxis, ...]
+            if window.shape[0] < 3:
+                raise RuntimeError(f"{rgb_path} returned fewer than 3 bands while importing {table_name}")
+
+            padded = np.zeros((3, TILE_SIZE, TILE_SIZE), dtype=np.uint8)
+            padded[:, :ysize, :xsize] = window[:3]
+
+            tile_ds = mem_driver.Create("", TILE_SIZE, TILE_SIZE, 3, gdal.GDT_Byte)
+            if tile_ds is None:
+                raise RuntimeError("Failed to create in-memory PNG tile")
+
+            try:
+                for band_index in range(3):
+                    tile_ds.GetRasterBand(band_index + 1).WriteArray(padded[band_index])
+
+                if tile_png_path.exists():
+                    tile_png_path.unlink()
+                translated = gdal.Translate(str(tile_png_path), tile_ds, format="PNG")
+                if translated is None:
+                    raise RuntimeError("Failed to encode PNG tile")
+                translated = None
+
+                conn.execute(
+                    f"INSERT INTO {table_identifier} (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)",
+                    (0, tile_column, tile_row, sqlite3.Binary(tile_png_path.read_bytes())),
+                )
+                total_tiles += 1
+                imported_tiles += 1
+                if total_expected:
+                    percent = int(round((imported_tiles / total_expected) * 100))
+                    if imported_tiles == total_expected or imported_tiles % 50 == 0:
+                        log(f"        Imported {imported_tiles}/{total_expected} tiles ({percent}% done).")
+            finally:
+                tile_ds = None
+
+    return total_tiles, imported_tiles
 
 
 def run_gdal2tiles(rgb_path: Path, tiles_dir: Path, min_zoom: int, max_zoom: int, processes: int) -> None:
@@ -214,11 +473,9 @@ def run_gdal2tiles(rgb_path: Path, tiles_dir: Path, min_zoom: int, max_zoom: int
         "-n",
         "-w",
         "none",
-        "-v",
+        "-q",
         "--processes",
         str(processes),
-        "-r",
-        "near",
         "-z",
         f"{min_zoom}-{max_zoom}",
         str(rgb_path),
@@ -230,7 +487,17 @@ def run_gdal2tiles(rgb_path: Path, tiles_dir: Path, min_zoom: int, max_zoom: int
     log("      Tile pyramid ready.")
 
 
-def create_gpkg(tile_dir: Path, output_path: Path, identifier: str, source_name: str, bbox: tuple[float, float, float, float], min_zoom: int, max_zoom: int) -> None:
+def create_gpkg(
+    display_tile_dir: Path,
+    native_rgb_path: Path,
+    output_path: Path,
+    identifier: str,
+    source_name: str,
+    display_bbox: tuple[float, float, float, float],
+    native_bbox: tuple[float, float, float, float],
+    min_zoom: int,
+    max_zoom: int,
+) -> None:
     log("[3/4] Wrapping tiles into GeoPackage...")
     if output_path.exists():
         output_path.unlink()
@@ -238,7 +505,7 @@ def create_gpkg(tile_dir: Path, output_path: Path, identifier: str, source_name:
     conn = sqlite3.connect(str(output_path))
     try:
         conn.execute("PRAGMA application_id = 1196444487")
-        conn.execute("PRAGMA user_version = 10200")
+        conn.execute(f"PRAGMA user_version = {load_user_version_from_pixi()}")
         conn.execute("PRAGMA foreign_keys = ON")
 
         conn.executescript(
@@ -336,15 +603,6 @@ def create_gpkg(tile_dir: Path, output_path: Path, identifier: str, source_name:
                 CONSTRAINT fk_gtms_table_name FOREIGN KEY (table_name) REFERENCES gpkg_contents(table_name),
                 CONSTRAINT fk_gtms_srs FOREIGN KEY (srs_id) REFERENCES gpkg_spatial_ref_sys (srs_id)
             );
-
-            CREATE TABLE terrain_rgb (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                zoom_level INTEGER NOT NULL,
-                tile_column INTEGER NOT NULL,
-                tile_row INTEGER NOT NULL,
-                tile_data BLOB NOT NULL,
-                UNIQUE (zoom_level, tile_column, tile_row)
-            );
             """
         )
 
@@ -379,33 +637,6 @@ def create_gpkg(tile_dir: Path, output_path: Path, identifier: str, source_name:
             END;
             CREATE TRIGGER gpkg_tile_matrix_zoom_level_update BEFORE UPDATE OF zoom_level ON gpkg_tile_matrix FOR EACH ROW BEGIN
               SELECT RAISE(ABORT, 'update on table ''gpkg_tile_matrix'' violates constraint: zoom_level cannot be less than 0') WHERE (NEW.zoom_level < 0);
-            END;
-            """
-        )
-
-        conn.executescript(
-            """
-            CREATE TRIGGER terrain_rgb_tile_column_insert BEFORE INSERT ON terrain_rgb FOR EACH ROW BEGIN
-              SELECT RAISE(ABORT, 'insert on table ''terrain_rgb'' violates constraint: tile_column cannot be < 0') WHERE (NEW.tile_column < 0);
-              SELECT RAISE(ABORT, 'insert on table ''terrain_rgb'' violates constraint: tile_column must by < matrix_width specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE lower(table_name) = lower('terrain_rgb') AND zoom_level = NEW.zoom_level));
-            END;
-            CREATE TRIGGER terrain_rgb_tile_column_update BEFORE UPDATE OF tile_column ON terrain_rgb FOR EACH ROW BEGIN
-              SELECT RAISE(ABORT, 'update on table ''terrain_rgb'' violates constraint: tile_column cannot be < 0') WHERE (NEW.tile_column < 0);
-              SELECT RAISE(ABORT, 'update on table ''terrain_rgb'' violates constraint: tile_column must by < matrix_width specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE lower(table_name) = lower('terrain_rgb') AND zoom_level = NEW.zoom_level));
-            END;
-            CREATE TRIGGER terrain_rgb_tile_row_insert BEFORE INSERT ON terrain_rgb FOR EACH ROW BEGIN
-              SELECT RAISE(ABORT, 'insert on table ''terrain_rgb'' violates constraint: tile_row cannot be < 0') WHERE (NEW.tile_row < 0);
-              SELECT RAISE(ABORT, 'insert on table ''terrain_rgb'' violates constraint: tile_row must by < matrix_height specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE lower(table_name) = lower('terrain_rgb') AND zoom_level = NEW.zoom_level));
-            END;
-            CREATE TRIGGER terrain_rgb_tile_row_update BEFORE UPDATE OF tile_row ON terrain_rgb FOR EACH ROW BEGIN
-              SELECT RAISE(ABORT, 'update on table ''terrain_rgb'' violates constraint: tile_row cannot be < 0') WHERE (NEW.tile_row < 0);
-              SELECT RAISE(ABORT, 'update on table ''terrain_rgb'' violates constraint: tile_row must by < matrix_height specified for table and zoom level in gpkg_tile_matrix') WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE lower(table_name) = lower('terrain_rgb') AND zoom_level = NEW.zoom_level));
-            END;
-            CREATE TRIGGER terrain_rgb_zoom_insert BEFORE INSERT ON terrain_rgb FOR EACH ROW BEGIN
-              SELECT RAISE(ABORT, 'insert on table ''terrain_rgb'' violates constraint: zoom_level not specified for table in gpkg_tile_matrix') WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE lower(table_name) = lower('terrain_rgb')));
-            END;
-            CREATE TRIGGER terrain_rgb_zoom_update BEFORE UPDATE OF zoom_level ON terrain_rgb FOR EACH ROW BEGIN
-              SELECT RAISE(ABORT, 'update on table ''terrain_rgb'' violates constraint: zoom_level not specified for table in gpkg_tile_matrix') WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE lower(table_name) = lower('terrain_rgb')));
             END;
             """
         )
@@ -446,22 +677,39 @@ def create_gpkg(tile_dir: Path, output_path: Path, identifier: str, source_name:
             ),
         )
 
-        conn.execute(
-            "INSERT INTO gpkg_contents (table_name, data_type, identifier, description, min_x, min_y, max_x, max_y, srs_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ( "terrain_rgb", "tiles", identifier, DESCRIPTION, bbox[0], bbox[1], bbox[2], bbox[3], 4326),
-        )
-        conn.execute(
-            "INSERT INTO gpkg_tile_matrix_set (table_name, srs_id, min_x, min_y, max_x, max_y) VALUES (?, ?, ?, ?, ?, ?)",
-            ("terrain_rgb", 4326, -180.0, -90.0, 180.0, 270.0),
+        create_terrain_rgb_schema(conn, "terrain_rgb_native")
+        native_rgb_ds = gdal.Open(str(native_rgb_path))
+        if native_rgb_ds is None:
+            raise FileNotFoundError(f"Could not open {native_rgb_path}")
+        try:
+            native_gt = native_rgb_ds.GetGeoTransform()
+            native_width = native_rgb_ds.RasterXSize
+            native_height = native_rgb_ds.RasterYSize
+        finally:
+            native_rgb_ds = None
+
+        register_native_terrain_rgb_table(
+            conn,
+            "terrain_rgb_native",
+            f"{identifier}_native",
+            NATIVE_DESCRIPTION,
+            native_bbox,
+            native_width,
+            native_height,
+            abs(native_gt[1]),
+            abs(native_gt[5]),
         )
 
-        for zoom in range(min_zoom, max_zoom + 1):
-            matrix = 2 ** zoom
-            pixel = 360.0 / (matrix * 256.0)
-            conn.execute(
-                "INSERT INTO gpkg_tile_matrix (table_name, zoom_level, matrix_width, matrix_height, tile_width, tile_height, pixel_x_size, pixel_y_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                ("terrain_rgb", zoom, matrix, matrix, 256, 256, pixel, pixel),
-            )
+        create_terrain_rgb_schema(conn, "terrain_rgb")
+        register_terrain_rgb_table(
+            conn,
+            "terrain_rgb",
+            identifier,
+            DESCRIPTION,
+            display_bbox,
+            min_zoom,
+            max_zoom,
+        )
 
         conn.execute(
             "INSERT INTO gpkg_metadata (id, md_scope, md_standard_uri, mime_type, metadata) VALUES (?, ?, ?, ?, ?)",
@@ -470,12 +718,21 @@ def create_gpkg(tile_dir: Path, output_path: Path, identifier: str, source_name:
                 "dataset",
                 "http://gdal.org",
                 "text/xml",
-                f"<GDALMultiDomainMetadata>\n  <Metadata>\n    <MDI key=\"NAME\">{source_name}</MDI>\n  </Metadata>\n</GDALMultiDomainMetadata>\n",
+                f"""<GDALMultiDomainMetadata>
+  <Metadata>
+    <MDI key="NAME">{source_name}</MDI>
+  </Metadata>
+</GDALMultiDomainMetadata>
+""",
             ),
         )
         conn.execute(
             "INSERT INTO gpkg_metadata_reference (reference_scope, table_name, column_name, row_id_value, md_file_id, md_parent_id) VALUES (?, ?, ?, ?, ?, ?)",
             ("table", "terrain_rgb", None, None, 1, None),
+        )
+        conn.execute(
+            "INSERT INTO gpkg_metadata_reference (reference_scope, table_name, column_name, row_id_value, md_file_id, md_parent_id) VALUES (?, ?, ?, ?, ?, ?)",
+            ("table", "terrain_rgb_native", None, None, 1, None),
         )
         conn.execute(
             "INSERT INTO gpkg_extensions (table_name, column_name, extension_name, definition, scope) VALUES (?, ?, ?, ?, ?)",
@@ -498,48 +755,32 @@ def create_gpkg(tile_dir: Path, output_path: Path, identifier: str, source_name:
             ),
         )
 
-        tile_root = tile_dir
+        tile_root = display_tile_dir
         if not tile_root.exists():
             raise FileNotFoundError(f"Missing gdal2tiles output at {tile_root}")
 
-        total_tiles = sum(
-            1
-            for z_dir in tile_root.iterdir()
-            if z_dir.is_dir() and z_dir.name.isdigit()
-            for x_dir in z_dir.iterdir()
-            if x_dir.is_dir() and x_dir.name.isdigit()
-            for _ in x_dir.glob("*.png")
-        )
         imported_tiles = 0
-        blobs = 0
-        for z_dir in sorted([p for p in tile_root.iterdir() if p.is_dir() and p.name.isdigit()], key=lambda p: int(p.name)):
-            zoom = int(z_dir.name)
-            zoom_tiles = 0
-            log(f"      Zoom {zoom}: importing tiles...")
-            for x_dir in sorted([p for p in z_dir.iterdir() if p.is_dir() and p.name.isdigit()], key=lambda p: int(p.name)):
-                tile_column = int(x_dir.name)
-                for png_path in sorted(x_dir.glob("*.png"), key=lambda p: int(p.stem)):
-                    tile_row = int(png_path.stem)
-                    conn.execute(
-                        "INSERT INTO terrain_rgb (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)",
-                        (zoom, tile_column, tile_row, sqlite3.Binary(png_path.read_bytes())),
-                    )
-                    blobs += 1
-                    zoom_tiles += 1
-                    imported_tiles += 1
-                    if total_tiles:
-                        percent = int(round((imported_tiles / total_tiles) * 100))
-                        if imported_tiles == total_tiles or imported_tiles % 50 == 0:
-                            log(f"        Imported {imported_tiles}/{total_tiles} tiles ({percent}% done).")
-            log(f"        {zoom_tiles} tiles imported at zoom {zoom}.")
+        _, display_imported = import_tiles_for_table(
+            conn,
+            "terrain_rgb",
+            tile_root,
+            lambda zoom: True,
+        )
+        imported_tiles += display_imported
+        _, native_imported = import_raster_tiles_for_table(
+            conn,
+            "terrain_rgb_native",
+            native_rgb_path,
+            display_tile_dir.parent,
+        )
+        imported_tiles += native_imported
 
         conn.commit()
-        if blobs == 0:
+        if imported_tiles == 0:
             raise RuntimeError("No PNG tiles were found to wrap into the GeoPackage")
         log("      GeoPackage ready.")
     finally:
         conn.close()
-
 
 def tile_has_transparency(tile_blob: bytes) -> bool:
     mem_path = "/vsimem/prune_tile.png"
@@ -576,6 +817,8 @@ def prune_transparent_tiles(output_path: Path) -> tuple[int, int]:
 
         for table_row in table_rows:
             table_name = table_row["table_name"]
+            if table_name == "terrain_rgb_native":
+                continue
             table_identifier = '"' + table_name.replace('"', '""') + '"'
             delete_rows: list[tuple[int, int, int]] = []
             table_total = 0
@@ -601,11 +844,6 @@ def prune_transparent_tiles(output_path: Path) -> tuple[int, int]:
                     "UPDATE gpkg_contents SET last_change = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE table_name = ?",
                     (table_name,),
                 )
-                log(
-                    f"      Pruned {table_pruned} of {table_total} tiles from {table_name} ({(table_pruned / table_total * 100):.2f}% removed)"
-                )
-            else:
-                log(f"      No transparent tiles found in {table_name}.")
 
         conn.commit()
         if pruned_tiles:
@@ -616,32 +854,30 @@ def prune_transparent_tiles(output_path: Path) -> tuple[int, int]:
         raise
     finally:
         conn.close()
-def build_gpkg(src_path: Path, output_path: Path, target_srs: str, base: float, interval: float, min_zoom: int | None, max_zoom: int | None, auto_zoom: bool) -> None:
+def build_gpkg(
+    src_path: Path,
+    output_path: Path,
+    target_srs: str,
+    base: float,
+    interval: float,
+    resample_alg: str,
+    min_zoom: int | None,
+    max_zoom: int | None,
+    auto_zoom: bool,
+) -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         work_dir = Path(tmpdir)
+        native_rgb_path, native_bbox = encode_terrain_rgb(
+            src_path,
+            work_dir,
+            target_srs,
+            base,
+            interval,
+            resample_alg,
+            output_name="native_rgb.tif",
+        )
         if auto_zoom:
-            src_ds = gdal.Open(str(src_path))
-            if src_ds is None:
-                raise FileNotFoundError(f"Could not open {src_path}")
-            temp_vrt_path = work_dir / "temp_warp.vrt"
-            try:
-                temp_warp_ds = gdal.Warp(str(temp_vrt_path), src_ds, format="VRT", dstSRS=target_srs)
-                if temp_warp_ds is None:
-                    raise RuntimeError("Failed to create temporary VRT to determine zoom level")
-                gt = temp_warp_ds.GetGeoTransform()
-                res_deg = abs(gt[1])
-            finally:
-                temp_warp_ds = None
-                src_ds = None
-                try:
-                    if temp_vrt_path.exists():
-                        temp_vrt_path.unlink()
-                except Exception:
-                    pass
-
-            if res_deg <= 0:
-                raise ValueError("Cannot compute automatic zoom from a non-positive pixel size")
-            auto_max_zoom = int(math.ceil(math.log2(360.0 / (256.0 * res_deg))))
+            auto_max_zoom = compute_auto_zoom(native_rgb_path)
             log(f"      Auto zoom ceiling selected: {auto_max_zoom}")
             if max_zoom is None:
                 max_zoom = auto_max_zoom
@@ -649,31 +885,39 @@ def build_gpkg(src_path: Path, output_path: Path, target_srs: str, base: float, 
                 max_zoom = min(max_zoom, auto_max_zoom)
             if min_zoom is None:
                 min_zoom = max(0, max_zoom - 6)
-
-        if min_zoom is None or max_zoom is None:
-            raise ValueError("gpkg output requires either --auto-zoom or both --min-zoom and --max-zoom")
-
-        if min_zoom > max_zoom:
+        if min_zoom is not None and max_zoom is not None and min_zoom > max_zoom:
             raise ValueError("Computed or supplied minimum zoom cannot be greater than the final maximum zoom")
-
-        # Compute exact target resolution in degrees per pixel matching the selected max_zoom
-        target_res = 360.0 / ((2 ** max_zoom) * 256.0)
-
-        # Warp the float elevation data directly to target_res, then encode to RGB
-        rgb_path, bbox = encode_terrain_rgb(src_path, work_dir, target_srs, base, interval, target_res=target_res)
-
         tiles_dir = work_dir / "tiles"
         tiles_dir.mkdir(parents=True, exist_ok=True)
         processes = max(1, min(8, (os.cpu_count() or 1)))
-        run_gdal2tiles(rgb_path, tiles_dir, min_zoom, max_zoom, processes)
+        if min_zoom is None or max_zoom is None:
+            raise ValueError("gpkg output requires either --auto-zoom or both --min-zoom and --max-zoom")
+        display_target_res = 360.0 / ((2 ** max_zoom) * 256.0)
+        display_rgb_path, display_bbox = encode_terrain_rgb(
+            src_path,
+            work_dir,
+            target_srs,
+            base,
+            interval,
+            resample_alg,
+            target_res=display_target_res,
+            output_name="display_rgb.tif",
+        )
+        run_gdal2tiles(display_rgb_path, tiles_dir, min_zoom, max_zoom, processes)
         source_name = f"{output_path.stem}.tif"
-        create_gpkg(tiles_dir, output_path, output_path.stem, source_name, bbox, min_zoom, max_zoom)
-        log("[4/4] Pruning transparent tiles...")
+        create_gpkg(
+            tiles_dir,
+            native_rgb_path,
+            output_path,
+            output_path.stem,
+            source_name,
+            display_bbox,
+            native_bbox,
+            min_zoom,
+            max_zoom,
+        )
         total_tiles, pruned_tiles = prune_transparent_tiles(output_path)
-        removed_percent = (pruned_tiles / total_tiles * 100) if total_tiles else 0.0
-        log(f"      Pruned {pruned_tiles} of {total_tiles} tiles ({removed_percent:.2f}% removed).")
-        log("[4/4] Finished.")
-
+        log(f"[4/4] Pruned {pruned_tiles} of {total_tiles} tiles from resampled layers.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -683,6 +927,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-srs", default="EPSG:4326", help="Target CRS for reprojection")
     parser.add_argument("--base", type=float, default=-10000.0, help="Terrain-RGB base value")
     parser.add_argument("--interval", type=float, default=0.1, help="Terrain-RGB interval value")
+    parser.add_argument(
+        "--resample-alg",
+        choices=sorted(RESAMPLE_ALG_MAP),
+        default="max",
+        help="GDAL resampling algorithm used during reprojection",
+    )
     parser.add_argument("--min-zoom", type=int, help="Minimum zoom level for output")
     parser.add_argument("--max-zoom", type=int, help="Maximum zoom level for output")
     parser.add_argument("--auto-zoom", action="store_true", help="Automatically choose the highest useful zoom from the input resolution")
@@ -696,7 +946,17 @@ def main() -> None:
         raise ValueError("gpkg output requires --min-zoom and --max-zoom unless --auto-zoom is set")
     if args.min_zoom is not None and args.max_zoom is not None and args.min_zoom > args.max_zoom:
         raise ValueError("--min-zoom cannot be greater than --max-zoom")
-    build_gpkg(args.input, output_path, args.target_srs, args.base, args.interval, args.min_zoom, args.max_zoom, args.auto_zoom)
+    build_gpkg(
+        args.input,
+        output_path,
+        args.target_srs,
+        args.base,
+        args.interval,
+        args.resample_alg,
+        args.min_zoom,
+        args.max_zoom,
+        args.auto_zoom,
+    )
 
 
 if __name__ == "__main__":

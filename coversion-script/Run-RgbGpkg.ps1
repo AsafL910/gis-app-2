@@ -1,4 +1,3 @@
-$Version = "v0.2.0"
 [CmdletBinding()]
 param(
     [switch]$AutoZoom,
@@ -10,20 +9,19 @@ param(
 $ErrorActionPreference = "Stop"
 $exitCode = 0
 
+function Get-PixiVersion {
+    param([string]$PixiTomlPath)
+    $match = Select-String -Path $PixiTomlPath -Pattern '^\s*version\s*=\s*"(.*?)"' | Select-Object -First 1
+    if ($match) { return "v$($match.Matches[0].Groups[1].Value)" }
+    return "vunknown"
+}
+
+$Version = Get-PixiVersion (Join-Path $PSScriptRoot "pixi.toml")
+
 function Write-Section {
     param([string]$Text)
     Write-Host ""
     Write-Host $Text -ForegroundColor Cyan
-}
-
-function Write-Stage {
-    param(
-        [string]$Activity,
-        [string]$Status,
-        [int]$PercentComplete
-    )
-
-    Write-Progress -Activity $Activity -Status $Status -PercentComplete $PercentComplete
 }
 
 try {
@@ -60,7 +58,6 @@ try {
         throw "No .tif/.tiff files found in $inputDir. Put a file into the input folder and run this again."
     }
 
-    Write-Stage -Activity "RGB GeoPackage Builder" -Status "Selecting input" -PercentComplete 5
     Write-Section "Available inputs:"
     for ($i = 0; $i -lt $files.Count; $i++) {
         $index = $i + 1
@@ -79,8 +76,6 @@ try {
     }
 
     $inputFile = $files[$selectedIndex]
-    Write-Stage -Activity "RGB GeoPackage Builder" -Status "Input selected: $($inputFile.Name)" -PercentComplete 10
-
     $defaultOutputName = ($inputFile.BaseName + "_RGB.gpkg")
     if ([string]::IsNullOrWhiteSpace($OutputName)) {
         $outputName = Read-Host "Output file name [$defaultOutputName]"
@@ -96,8 +91,6 @@ try {
     }
 
     $outputFile = Join-Path $outputDir $outputName
-    Write-Stage -Activity "RGB GeoPackage Builder" -Status "Writing to $([System.IO.Path]::GetFileName($outputFile))" -PercentComplete 20
-
     $extraArgs = @()
     if (-not $PSBoundParameters.ContainsKey("AutoZoom") -and -not $PSBoundParameters.ContainsKey("MinZoom") -and -not $PSBoundParameters.ContainsKey("MaxZoom")) {
         Write-Section "Zoom mode:"
@@ -116,7 +109,6 @@ try {
     }
 
     if ($AutoZoom.IsPresent) {
-        Write-Stage -Activity "RGB GeoPackage Builder" -Status "Auto zoom selected" -PercentComplete 25
         $extraArgs += @("--auto-zoom")
     } elseif ($PSBoundParameters.ContainsKey("MinZoom") -and $PSBoundParameters.ContainsKey("MaxZoom")) {
         $minZoomInt = $MinZoom
@@ -124,7 +116,6 @@ try {
         if ($minZoomInt -gt $maxZoomInt) {
             throw "Minimum zoom cannot be greater than maximum zoom."
         }
-        Write-Stage -Activity "RGB GeoPackage Builder" -Status "Manual zooms $minZoomInt..$maxZoomInt" -PercentComplete 25
         $extraArgs += @("--min-zoom", "$minZoomInt", "--max-zoom", "$maxZoomInt")
     } else {
         $minZoom = Read-Host "Minimum zoom level"
@@ -140,13 +131,11 @@ try {
         if ($minZoomInt -gt $maxZoomInt) {
             throw "Minimum zoom cannot be greater than maximum zoom."
         }
-        Write-Stage -Activity "RGB GeoPackage Builder" -Status "Manual zooms $minZoomInt..$maxZoomInt" -PercentComplete 25
         $extraArgs += @("--min-zoom", "$minZoomInt", "--max-zoom", "$maxZoomInt")
     }
 
     Write-Host ""
     Write-Host "Processing $($inputFile.Name) -> $([System.IO.Path]::GetFileName($outputFile))" -ForegroundColor Green
-    Write-Stage -Activity "RGB GeoPackage Builder" -Status "Launching converter" -PercentComplete 30
     if ($usePixi) {
         & pixi run --manifest-path (Join-Path $root "pixi.toml") python $script $inputFile.FullName $outputFile @extraArgs
     } else {
@@ -157,13 +146,10 @@ try {
     }
 
 
-
-    Write-Progress -Activity "RGB GeoPackage Builder" -Completed
     Write-Host "Done. Output written to:`n  $outputFile" -ForegroundColor Green
 }
 catch {
     $exitCode = 1
-    Write-Progress -Activity "RGB GeoPackage Builder" -Completed
     Write-Host ""
     Write-Host "Conversion failed:" -ForegroundColor Red
     Write-Host ("  " + $_.Exception.Message) -ForegroundColor Red
